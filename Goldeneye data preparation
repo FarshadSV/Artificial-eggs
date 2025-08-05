@@ -1,0 +1,170 @@
+# Load required libraries
+library(data.table)
+library(circular)
+library(rmatio)
+library(REdaS)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(chron)
+library(zoo)
+
+# 1) Load MATLAB files
+
+#.mat file of the "result" of the initial process 
+folder_path <- "C:/Users/svasha/Desktop/Sajjad_Vakili/Data_analyses/Artificial_eggs/Goldeneye_artificial_eggs/Logger/Initial_results/MATLAB-K02.mat"
+mat_data <- read.mat(folder_path) 
+
+## .mat file of the "Euler angle" change of the initial process 
+folder_path2 <- "C:/Users/svasha/Desktop/Sajjad_Vakili/Data_analyses/Artificial_eggs/Goldeneye_artificial_eggs/Logger/Initial_results/MATLAB-K02-angle.mat"
+mat_data2 <- read.mat(folder_path2)
+
+data <- mat_data
+df <- as.data.frame(data)
+
+data2 <- mat_data2
+df2 <- as.data.frame(data2)
+#changing the column name for df2
+df2$Euler_angle <- df2$angleDiffSmooth
+df2 <- subset(df2, select=-angleDiffSmooth)
+
+# 1.1) Removing the extra columns from 
+columns_to_remove <- c(8, 9, 10, 12, 13) 
+df <- df[, -columns_to_remove]
+
+# 1.1.1) Defining new column names
+column_names <- c("Time", "Roll", "Pitch", "Yaw", "RollSigma", "PitchSigma", "YawSigma", "Temp")
+setnames(df, old = colnames(df), new = column_names)
+
+# 1.1.1.1) Merging two data frames: adding Euler angle data in a column
+## modifying the df2 to match the df
+
+df <- as.data.frame(df[-1,])
+
+#merging
+df <- cbind(df, df2)
+### Creating a copy of data frame 
+GD <- df
+
+# 2) Converting the angles to degrees
+df$Roll <- rad2deg(df$Roll)
+df$Yaw <- rad2deg(df$Yaw)
+df$Pitch <- rad2deg(df$Pitch)
+df$Euler_angle <- rad2deg(df$Euler_angle)
+
+# 3) Data exploration
+Temp_mean <- mean(df$Temp, na.rm = TRUE)
+cat("Mean temperature is:", Temp_mean, "\n")
+
+# Display basic statistics using describe
+df_stats <- summary(df)
+cat("Basic statistics\n")
+print(df_stats)
+
+# Means and standard deviation for each column
+mean_values <- colMeans(df, na.rm = TRUE)
+std_values <- apply(df, 2, sd, na.rm = TRUE)
+
+cat('"\nMeans:"\n')
+print(mean_values)
+cat("\nStandard Deviations:\n")
+print(std_values)
+
+# Plotting the angle change to compare with the initial process output
+#Adding a column for hour
+df$Time <- as.numeric(as.character(df$Time))
+df$Hour <- floor(df$Time/3600)
+
+df_hourly <- df %>%
+  group_by(Hour) %>%
+  summarise(Roll=mean(Roll), Pitch = mean(Pitch), Yaw = mean(Yaw))
+            
+plot(df_hourly$Hour, df_hourly$Roll, type = "l", col = "blue", xlab = "Hour", ylab = "Angle", main = "Angle Change Over Time")
+lines(df_hourly$Hour, df_hourly$Pitch, col = "red")
+lines(df_hourly$Hour, df_hourly$Yaw, col = "green")
+legend("topright", legend = c("Roll", "Pitch", "Yaw"), col = c("blue", "red", "green"), lty = 1, bty="n")
+
+# Calculating circular mean and circular variance for each column
+circular_mean_Roll <- mean(circular::circular(df$Roll, units = "degrees"))
+circular_variance_Roll <- var(circular::circular(df$Roll, units = "degrees"))
+
+circular_mean_yaw <- mean(circular::circular(df$Yaw, units = "degrees"))
+circular_variance_yaw <- var(circular::circular(df$Yaw, units = "degrees"))
+
+circular_mean_pitch <- mean(circular::circular(df$Pitch, units = "degrees"))
+circular_variance_pitch <- var(circular::circular(df$Pitch, units = "degrees"))
+
+circular_mean_Euler <- mean(circular::circular(df$Euler_angle, units = "degrees"))
+circular_variance_Euler <- var(circular::circular(df$Euler_angle, units = "degrees"))
+
+cat("Circular Mean and Variance for Roll:\n")
+cat("Mean:", circular_mean_Roll, "\n")
+cat("Variance:", circular_variance_Roll, "\n")
+
+cat("\nCircular Mean and Variance for Yaw:\n")
+cat("Mean:", circular_mean_yaw, "\n")
+cat("Variance:", circular_variance_yaw, "\n")
+
+cat("\nCircular Mean and Variance for Pitch:\n")
+cat("Mean:", circular_mean_pitch, "\n")
+cat("Variance:", circular_variance_pitch, "\n")
+
+cat("\nCircular Mean and Variance for Euler angle:\n")
+cat("Mean:", circular_mean_Euler, "\n")
+cat("Variance:", circular_variance_Euler, "\n")
+
+
+# 4) Adding the actual time and date of logger function 
+# Function to convert seconds to formatted time and update the date
+
+df$Time <- as.numeric(as.character(df$Time))
+
+# Defining the conversion function
+convert_seconds_to_time_and_date <- function(seconds) {
+  initial_time <- as.POSIXct('2022-05-02 14:52:00', tz = "UTC")
+  # Adjusting for seconds correctly
+  result_time <- initial_time + seconds - 1
+  
+  # Formatting time as HH:MM:SS
+  formatted_time <- format(result_time, "%T")
+  
+  # Extracting date as Y-m-d
+  result_date <- as.Date(result_time)
+  
+  return(list(date = as.character(result_date), time = formatted_time))
+}
+
+# Applying the function to each row
+results <- lapply(df$Time, convert_seconds_to_time_and_date)
+
+# Extract and assigning the results back to the dataframe
+df$Date <- sapply(results, function(x) x$date)
+df$Time <- sapply(results, function(x) x$time)
+
+## Re-ordering the columns
+#Date
+df <- df[, c(11, 1:10)]
+#Euler angle 
+df <- df[, c(1:2, 10, 3:9, 11)]
+#Temperature 
+df <- df[, c(1:3, 10, 4:9, 11)]
+
+### Rounding the values to 3 decimal places 
+
+df$Euler_angle <- round(df$Euler_angle, digits=3)
+
+#5) Removing the first 2 hour of data 
+#removing the first 7200 rows= 2 hours
+
+df <- df[-c(1:7200),]
+
+#5.1) And the last .5 hour (is not necessary for all, based on the recording status of the logger) =1800
+df <- df[1:(nrow(df) - 1800),]
+
+#6) Checking the sum of angular changes over 10 degrees (as representative of an actual complete turn)
+over_10 <- sum(df$Euler_angle > 10, na.rm = TRUE)
+over_10
+
+#saving the dataframe as .csv 
+write.csv(GD, file= "GD13(K27).csv", row.names=FALSE)
+
