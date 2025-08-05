@@ -1,0 +1,147 @@
+
+# Preparing the modeling dataset 
+library(dplyr)
+library(lubridate)
+
+ED <- `GD223(K25)`
+
+range(ED$Date, na.rm=TRUE)
+
+#Since the dataset is a merge of separate weeks - with internals- we double check how many hours of logger info we have in total: 
+totalHRS <- sum(!is.na(ED$DateTime))
+
+ED <- ED %>%
+  mutate(DateTime = as.POSIXct(paste(Date, Time), format="%Y-%m-%d %H:%M:%S"))
+
+ED$Hour <- hour(ED$DateTime)
+
+## Removing the rows corresponding to the blood sampling event (if necessary). Until 2 hrs after capture 
+
+ED <- ED[-(1446814 :1454014), ]
+
+#1)Euler angle change
+##Filtering the data to only include Euler angles above 10 degrees. 
+#1.1) Overall mean angular change 
+
+ED_filtered <- ED %>%
+  filter(ED$Euler_angle >=10)
+
+mean(ED_filtered$Euler_angle, na.rm=TRUE)
+
+#1.2) Egg turning frequency 
+#Sum of all events/recorded hours
+
+ED <- ED %>%
+  mutate(over10= ifelse(Euler_angle >= 10 & lag(Euler_angle, default=0) < 10, TRUE, FALSE))
+
+sum_Euler <- sum(ED$over10==TRUE, na.rm=TRUE)
+
+sum_Euler/81
+#1.3) Egg turning frequency at night vs. day (4:00:00-22:00:00 VS. 22:00:00-4:00:00)
+
+ED <- ED %>%
+  mutate(
+    Time = hms::as_hms(Time),      # Convert to hms object
+    Hour = hour(Time),             # Extract hour. Had it before!
+    period = ifelse(Hour >= 4 & Hour < 22, "day", "night")  # Categorize as 'day' or 'night'
+  )
+
+day_turn_sum <- ED %>%
+  filter(period == "day") %>%
+  summarize(count = sum(over10 == TRUE))
+
+night_turn_sum <- ED %>%
+  filter(period == "night") %>%
+  summarize(count = sum(over10 == TRUE))
+
+total_hours_day <- nrow(ED %>% filter(period == "day")) / 3600
+total_hours_night <- nrow(ED %>% filter(period == "night")) / 3600
+
+Euler_day <- day_turn_sum$count / total_hours_day
+Euler_night <- night_turn_sum$count / total_hours_night
+Euler_day
+Euler_night
+
+#2)Average temperature (egg)
+Daily_mean <- ED %>%
+  group_by(Date) %>%
+  summarize(Daily_mean = mean(`Temp(egg)`, na.rm=TRUE))
+
+Hourly_mean <- ED %>%
+  group_by(Hour) %>%
+  summarize(Hourly_mean = mean(`Temp(egg)`, na.rm=TRUE))
+
+FinalDailyMean <- mean(Daily_mean$Daily_mean, na.rm=TRUE)
+FinalDailyMean
+FinalHourlyMean <- mean(Hourly_mean$Hourly_mean, na.rm=TRUE)
+FinalHourlyMean
+
+
+#3)Average temperature (out)
+Daily_mean <- ED %>%
+  group_by(Date) %>%
+  summarize(Daily_mean = mean(`Temp.OUT.`, na.rm=TRUE))
+
+Hourly_mean <- ED %>%
+  group_by(Hour) %>%
+  summarize(Hourly_mean = mean(`Temp.OUT.`, na.rm=TRUE))
+
+FinalDailyMean <- mean(Daily_mean$Daily_mean, na.rm=TRUE)
+FinalDailyMean
+FinalHourlyMean <- mean(Hourly_mean$Hourly_mean, na.rm=TRUE)
+FinalHourlyMean
+
+#4)Average roll: 
+ED_filtered <- ED %>%
+  filter(ED$Euler_angle >=10)
+
+Daily_mean <- ED_filtered %>%
+  group_by(Date) %>%
+  summarize(Daily_mean = mean(Roll, na.rm=TRUE))
+
+Hourly_mean <- ED_filtered %>%
+  group_by(Hour) %>%
+  summarize(Hourly_mean = mean(Roll, na.rm=TRUE))
+
+FinalDailyMean <- mean(Daily_mean$Daily_mean, na.rm=TRUE)
+FinalDailyMean
+FinalHourlyMean <- mean(Hourly_mean$Hourly_mean, na.rm=TRUE)
+FinalHourlyMean
+
+#5) Average pitch 
+Daily_mean <- ED_filtered %>%
+  group_by(Date) %>%
+  summarize(Daily_mean = mean(Pitch, na.rm=TRUE))
+
+Hourly_mean <- ED_filtered %>%
+  group_by(Hour) %>%
+  summarize(Hourly_mean = mean(Pitch, na.rm=TRUE))
+
+FinalDailyMean <- mean(Daily_mean$Daily_mean, na.rm=TRUE)
+FinalDailyMean
+FinalHourlyMean <- mean(Hourly_mean$Hourly_mean, na.rm=TRUE)
+FinalHourlyMean
+
+#6) Average Yaw
+Daily_mean <- ED_filtered %>%
+  group_by(Date) %>%
+  summarize(Daily_mean = mean(Yaw, na.rm=TRUE))
+
+Hourly_mean <- ED_filtered %>%
+  group_by(Hour) %>%
+  summarize(Hourly_mean = mean(Yaw, na.rm=TRUE))
+
+FinalDailyMean <- mean(Daily_mean$Daily_mean, na.rm=TRUE)
+FinalDailyMean
+FinalHourlyMean <- mean(Hourly_mean$Hourly_mean, na.rm=TRUE)
+FinalHourlyMean
+
+
+
+
+
+
+write.csv(ED, file= "ED91(K21).csv", row.names=FALSE)   
+
+
+  
