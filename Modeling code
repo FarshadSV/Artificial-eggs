@@ -657,8 +657,80 @@ plot(AVG_ANG_GD)
 shapiro.test(residuals(AVG_ANG_GD))
 hist(residuals(AVG_ANG_GD), breaks = 20, main = "Histogram of Residuals")
 
-#Plotting#
+#### PER day GD turning frequency----
+
+#From hourly dataset 
+#1) Making a new dataset for the daily average rate 1) 
+GD1Daily <- GD1
+#
+GD1Daily <- GD1Daily %>%
+  rename(Total_record_hr= `Total record (Hour)`)
+GD1Daily <- GD1Daily %>%
+  rename(AVG_Temp_day= `AVG.Temp.egg (Day)`)
+
+GD1Daily$Total_record_hr <- as.numeric(GD1Daily$Total_record_hr)
+GD1Daily$RecordedDays <- as.numeric(GD1Daily$RecordedDays)
+GD1Daily$AVG_Temp_day <- as.numeric(GD1Daily$AVG_Temp_day)
+# Only keeping days with at least 19 hours of record
+GD1Daily$DecimalPart <- GD1Daily$RecordedDays - floor(GD1Daily$RecordedDays)
+# Step 2: Apply the condition: Remove decimals if < 0.70
+GD1Daily$AdjustedRecordedDays <- ifelse(GD1Daily$DecimalPart < 0.70, 
+                                         floor(GD1Daily$RecordedDays), 
+                                        GD1Daily$RecordedDays)
+GD1Daily$newTotalHours <- GD1Daily$AdjustedRecordedDays*24
+
+#Re-calculating the average hourly turn
+GD1Daily$NewHourlyTurns <- GD1Daily$AVG_turns_hour * (GD1Daily$Total_record_hr / GD1Daily$newTotalHours)
+
+#Getting the average daily turn
+GD1Daily$Daily_avg_turn <- GD1Daily$NewHourlyTurns*24
+GD1Daily$Daily_avg_turn <- round(GD1Daily$Daily_avg_turn, 3)
+
+## 
+COR <- GD1Daily[, c("T3_T4","PFAS_SUM", "ClutchSize", "BodyCondition", "T3", "T4", "AVG_Temp_day","Daily_avg_turn","AdjustedRecordedDays")]
+correlation_matrix <- cor(COR, method="spearman", use = "complete.obs")
+#Model selection 
+GD1_complete <- na.omit(GD1Daily_scaled[, c("Daily_avg_turn","PFAS_SUM","T3","T4","T3_T4", "AVG_Temp_day","ClutchSize")])
+
+Dredge_LM_AVG_Daily=dredge(lm(Daily_avg_turn ~  PFAS_SUM +
+                                ClutchSize+
+                                AVG_Temp_day+
+                                T3+ T4
+                              + T3_T4+
+                                PFAS_SUM:T3+
+                                PFAS_SUM:T4+
+                                PFAS_SUM:T3_T4,
+                              data=GD1_complete,
+                              na.action = "na.fail"),
+                           fixed = c("PFAS_SUM"),
+                           subset = !(T3 && T4) &&
+                             !(T3 && T3_T4) &&
+                             !(T4 && T3_T4)
+)
+
+View(Dredge_LM_AVG_Daily)
+
+# summary() of the model with the lowest AICc
+summary(get.models(Dredge_LM_AVG_Daily, subset = 1)[[1]])
+#summary() of the 2nd best model
+summary(get.models(Dredge_LM_AVG_Daily, subset  = 2)[[1]])
+summary(get.models(Dredge_LM_AVG_Daily, subset = 3)[[1]])
+
+#Model output
+GDTurnDaily <- lm(Daily_avg_turn~ scale(PFAS_SUM), data=GD1_complete)
+summary(GDTurnDaily)
+nobs(GDTurnDaily)
+#Residuals test
+par(mfrow = c(2, 2))  
+plot(GDTurnDaily)  
+shapiro.test(residuals(GDTurnDaily))
+hist(residuals(GDTurnDaily), breaks = 20, main = "Histogram of Residuals")
+
+##Plotting##
 #Plotting: Average egg turning vs. PFAS
+#GDTurn<- lm(AVG_turns_hour~ PFAS_SUM+T3_T4, data=GD1_scaled)
+GD1_plot <- GD1_scaled[complete.cases(GD1_scaled[, c("PFAS_SUM", "T3_T4", "AVG_turns_hour")]), ]
+
 library(effects)
 pfas_eff <- allEffects(GDTurn)
 pfas_df <- as.data.frame(pfas_eff[["PFAS_SUM"]])
@@ -667,7 +739,9 @@ ggplot(pfas_df, aes(x = PFAS_SUM, y = fit)) +
   geom_line(color = "#B8923B", size = 1.2) +
   geom_ribbon(aes(ymin = lower, ymax = upper), 
               fill = "#B8923B", alpha = 0.15) +
-  labs(x = "???PFAS(scaled)",
+  geom_point(data = GD1_plot, aes(x = PFAS_SUM, y = AVG_turns_hour),
+             color = "#B8923B", alpha = 0.5, size = 3) +
+  labs(x = "∑PFAS(scaled)",
        y = "Average hourly egg turning frequency(scaled)") +
   theme_minimal(base_size = 14) +
   theme(
@@ -749,11 +823,11 @@ ggplot(coefs, aes(x = estimate, y = reorder(compound, estimate), color = conc_le
   geom_text(aes(label = sig_label), hjust = -0.8, vjust = 0.2, size = 6, color = "black") +
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
   scale_color_gradient(
-  low = "#FFE8B8",
-  high = "#9B5E3C",
-  name = "Mean PFAS\nConcentration",
-  breaks = c(1, 2, 3, 4),
-  labels = c("Lowest", "", "", "Highest")
+    low = "#FFE8B8",
+    high = "#9B5E3C",
+    name = "Mean PFAS\nConcentration",
+    breaks = c(1, 2, 3, 4),
+    labels = c("Lowest", "", "", "Highest")
   ) +
   labs(
     x = "Standardized Regression Coefficient (± 95% CI)",
@@ -765,76 +839,6 @@ ggplot(coefs, aes(x = estimate, y = reorder(compound, estimate), color = conc_le
     axis.line = element_line(color = "black"),
     plot.background = element_rect(fill = "transparent", colour = NA),
     legend.position = "non")
-#### PER day GD turning frequency----
-
-#From hourly dataset 
-#1) Making a new dataset for the daily average rate 1) 
-GD1Daily <- GD1
-#
-GD1Daily <- GD1Daily %>%
-  rename(Total_record_hr= `Total record (Hour)`)
-GD1Daily <- GD1Daily %>%
-  rename(AVG_Temp_day= `AVG.Temp.egg (Day)`)
-
-GD1Daily$Total_record_hr <- as.numeric(GD1Daily$Total_record_hr)
-GD1Daily$RecordedDays <- as.numeric(GD1Daily$RecordedDays)
-GD1Daily$AVG_Temp_day <- as.numeric(GD1Daily$AVG_Temp_day)
-# Only keeping days with at least 19 hours of record
-GD1Daily$DecimalPart <- GD1Daily$RecordedDays - floor(GD1Daily$RecordedDays)
-# Step 2: Apply the condition: Remove decimals if < 0.70
-GD1Daily$AdjustedRecordedDays <- ifelse(GD1Daily$DecimalPart < 0.70, 
-                                         floor(GD1Daily$RecordedDays), 
-                                        GD1Daily$RecordedDays)
-GD1Daily$newTotalHours <- GD1Daily$AdjustedRecordedDays*24
-
-#Re-calculating the average hourly turn
-GD1Daily$NewHourlyTurns <- GD1Daily$AVG_turns_hour * (GD1Daily$Total_record_hr / GD1Daily$newTotalHours)
-
-#Getting the average daily turn
-GD1Daily$Daily_avg_turn <- GD1Daily$NewHourlyTurns*24
-GD1Daily$Daily_avg_turn <- round(GD1Daily$Daily_avg_turn, 3)
-
-## 
-COR <- GD1Daily[, c("T3_T4","PFAS_SUM", "ClutchSize", "BodyCondition", "T3", "T4", "AVG_Temp_day","Daily_avg_turn","AdjustedRecordedDays")]
-correlation_matrix <- cor(COR, method="spearman", use = "complete.obs")
-#Model selection 
-GD1_complete <- na.omit(GD1Daily_scaled[, c("Daily_avg_turn","PFAS_SUM","T3","T4","T3_T4", "AVG_Temp_day","ClutchSize")])
-
-Dredge_LM_AVG_Daily=dredge(lm(Daily_avg_turn ~  PFAS_SUM +
-                                ClutchSize+
-                                AVG_Temp_day+
-                                T3+ T4
-                              + T3_T4+
-                                PFAS_SUM:T3+
-                                PFAS_SUM:T4+
-                                PFAS_SUM:T3_T4,
-                              data=GD1_complete,
-                              na.action = "na.fail"),
-                           fixed = c("PFAS_SUM"),
-                           subset = !(T3 && T4) &&
-                             !(T3 && T3_T4) &&
-                             !(T4 && T3_T4)
-)
-
-View(Dredge_LM_AVG_Daily)
-
-# summary() of the model with the lowest AICc
-summary(get.models(Dredge_LM_AVG_Daily, subset = 1)[[1]])
-#summary() of the 2nd best model
-summary(get.models(Dredge_LM_AVG_Daily, subset  = 2)[[1]])
-summary(get.models(Dredge_LM_AVG_Daily, subset = 3)[[1]])
-
-#Model output
-GDTurnDaily <- lm(Daily_avg_turn~ scale(PFAS_SUM), data=GD1_complete)
-summary(GDTurnDaily)
-nobs(GDTurnDaily)
-#Residuals test
-par(mfrow = c(2, 2))  
-plot(GDTurnDaily)  
-shapiro.test(residuals(GDTurnDaily))
-hist(residuals(GDTurnDaily), breaks = 20, main = "Histogram of Residuals")
-
-
 # ------ Eider ------
 
 COR <- ED1[, c("T3_T4","PFAS_SUM", "ClutchSize", "BodyCondition", "T3", "T4", "AVG_Temp_egg_Hour","AVG_Temp_out_Hour")]
@@ -962,84 +966,6 @@ plot(EDAng)
 shapiro.test(residuals(EDAng))
 hist(residuals(EDAng), breaks = 20, main = "Histogram of Residuals")
 
-###Plotting###
-#PFAS*T3:T4 interaction on turning frequency 
-sum(!is.na(ED1$T3_T4) & !is.na(ED1$AVG_turns_hour) & !is.na(ED1$PFAS_SUM))
-
-T3_vals <- c(
-  Low = mean(ED1_complete$T3_T4, na.rm = TRUE) - sd(ED1_complete$T3_T4, na.rm = TRUE),
-  Medium = mean(ED1_complete$T3_T4, na.rm = TRUE),
-  High = mean(ED1_complete$T3_T4, na.rm = TRUE) + sd(ED1_complete$T3_T4, na.rm = TRUE)
-)
-
-pred_grid <- expand.grid(
-  PFAS_SUM = seq(min(ED1_complete$PFAS_SUM), max(ED1_complete$PFAS_SUM), length.out = 100),
-  T3_T4 = T3_vals
-)
-
-pred_grid$AVG_turns_hour <- predict(EDTurn, newdata = pred_grid)
-
-pred_grid$T3_T4_level <- factor(pred_grid$T3_T4, labels = c("Mean-sd", "Mean", "Mean+sd"))
-
-ggplot(pred_grid, aes(x = PFAS_SUM, y = AVG_turns_hour, color = T3_T4_level)) +
-  geom_line(size = 1.2) +
-  labs(x = "???PFAS(scaled)", y = "Average hourly egg turning frequency(scaled)", color = "T3:T4") +
-  theme(
-    panel.background = element_rect(fill = "transparent", colour = NA),
-    legend.position = c(0.6,0.2),
-    axis.line = element_line(color = "black"),
-    plot.background = element_rect(fill = "transparent", colour = NA))+
-  scale_color_manual(values = c("#D7E7F7", "#92C0E6","cornflowerblue"))
-
-# PFASs all on egg turning
-coefs <- bind_rows(
-  tidy(EDTurnPFUnA, conf.int = TRUE) %>% filter(term == "scale(PFUnA)") %>% mutate(compound = "PFUnA"),
-  tidy(EDTurnPFHxS, conf.int = TRUE) %>% filter(term == "scale(PFHxS)") %>% mutate(compound = "PFHxS"),
-  tidy(EDTurnPFNA, conf.int = TRUE) %>% filter(term == "scale(PFNA)") %>% mutate(compound = "PFNA"),
-  tidy(EDTurnPFOS, conf.int = TRUE) %>% filter(term == "scale(PFOS)") %>% mutate(compound = "PFOS")
-)
-
-coefs <- coefs %>%
-  mutate(sig_label = case_when(
-    p.value < 0.001 ~ "***",
-    p.value < 0.01  ~ "**",
-    p.value < 0.05  ~ "*",
-    p.value < 0.10  ~ ".",  
-    TRUE            ~ ""
-  ))
-# Assign gradient values 
-concentration_rank <- tibble(
-  compound = c("PFUnA", "PFHxS", "PFNA", "PFOS"),
-  conc_level = c(1, 2, 3, 4)  # Higher = higher concentration
-)
-
-# Merge with coefficients
-coefs <- coefs %>%
-  left_join(concentration_rank, by = "compound")
-
-ggplot(coefs, aes(x = estimate, y = reorder(compound, estimate), color = conc_level)) +
-  geom_point(size = 3) +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
-  geom_text(aes(label = sig_label), hjust = -0.8, vjust = 0.2, size = 6, color = "black", position=position_nudge(y=0.15)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
-  scale_color_gradient(
-    low = "skyblue1",
-    high = "firebrick3",
-    name = "Mean PFAS\nConcentration",
-    breaks = c(1, 2, 3, 4),
-    labels = c("Lowest", "", "", "Highest")
-  ) +
-  labs(
-    x = "Standardized Regression Coefficient (± 95% CI)",
-    y = "PFAS",
-    title = "Egg Turning Rate (Overall/Hour)",
-  ) +
-  theme(
-    panel.background = element_rect(fill = "transparent", colour = NA),
-    axis.line = element_line(color = "black"),
-    plot.background = element_rect(fill = "transparent", colour = NA),
-    legend.position = "none")
-
 ##### PER day ED turning frequency ----
 #1) Making a new dataset for the daily average rate 1) 
 ED1Daily <- ED1
@@ -1123,6 +1049,92 @@ ED1_Sub <- ED1_complete[-14,]
 EDTurnDaily <- lm(Daily_avg_turn~ PFAS_SUM*T3_T4, data=ED1_Sub)
 summary(EDTurnDaily)
 nobs(EDTurnDaily)
+#
+###Plotting###
+#PFAS*T3:T4 interaction on turning frequency 
+#EDTurn <- lm(AVG_turns_hour~ PFAS_SUM*T3_T4, data=ED1_complete)
+#ED1_Plot <- ED1_complete[complete.cases(ED1_complete[, c("PFAS_SUM", "T3_T4", "AVG_turns_hour")]), ]
+pred_grid_ci <- expand.grid(
+  PFAS_SUM = seq(min(ED1_complete$PFAS_SUM), max(ED1_complete$PFAS_SUM), length.out = 100),
+  T3_T4 = T3_vals
+)
+
+pred_ci <- predict(EDTurn, newdata = pred_grid_ci, interval = "confidence")
+pred_grid_ci$fit <- pred_ci[, "fit"]
+pred_grid_ci$lower <- pred_ci[, "lwr"]
+pred_grid_ci$upper <- pred_ci[, "upr"]
+
+pred_grid_ci$T3_T4_level <- factor(pred_grid_ci$T3_T4, labels = c("Mean-sd", "Mean", "Mean+sd"))
+
+ggplot(pred_grid_ci, aes(x = PFAS_SUM, y = fit, color = T3_T4_level, fill = T3_T4_level)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.15, color = NA) +
+  geom_line(size = 1.2, linetype="dashed") +
+  geom_point(data = ED1_complete, aes(x = PFAS_SUM, y = AVG_turns_hour, color = T3_T4_level),
+             size = 2, alpha = 0.8) +
+  labs(x = "∑PFAS(scaled)", y = "Average hourly egg turning frequency(scaled)", color = "T3:T4", fill = "T3:T4") +
+  theme(
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    legend.position = c(0.6,0.2),
+    axis.line = element_line(color = "black"),
+    plot.background = element_rect(fill = "transparent", colour = NA)
+  ) +
+  scale_color_manual(values = c("Mean-sd" = "#AEC6E8", 
+                                "Mean" = "#6495ED", 
+                                "Mean+sd" = "#003F87")) +
+  scale_fill_manual(values = c("Mean-sd" = "#AEC6E8", 
+                               "Mean" = "#6495ED", 
+                               "Mean+sd" = "#003F87"))
+
+# PFASs all on egg turning
+coefs <- bind_rows(
+  tidy(EDTurnPFUnA, conf.int = TRUE) %>% filter(term == "scale(PFUnA)") %>% mutate(compound = "PFUnA"),
+  tidy(EDTurnPFHxS, conf.int = TRUE) %>% filter(term == "scale(PFHxS)") %>% mutate(compound = "PFHxS"),
+  tidy(EDTurnPFNA, conf.int = TRUE) %>% filter(term == "scale(PFNA)") %>% mutate(compound = "PFNA"),
+  tidy(EDTurnPFOS, conf.int = TRUE) %>% filter(term == "scale(PFOS)") %>% mutate(compound = "PFOS")
+)
+
+coefs <- coefs %>%
+  mutate(sig_label = case_when(
+    p.value < 0.001 ~ "***",
+    p.value < 0.01  ~ "**",
+    p.value < 0.05  ~ "*",
+    p.value < 0.10  ~ ".",  
+    TRUE            ~ ""
+  ))
+# Assign gradient values 
+concentration_rank <- tibble(
+  compound = c("PFUnA", "PFHxS", "PFNA", "PFOS"),
+  conc_level = c(1, 2, 3, 4)  # Higher = higher concentration
+)
+
+# Merge with coefficients
+coefs <- coefs %>%
+  left_join(concentration_rank, by = "compound")
+
+ggplot(coefs, aes(x = estimate, y = reorder(compound, estimate), color = conc_level)) +
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_text(aes(label = sig_label), hjust = -0.8, vjust = 0.2, size = 6, color = "black", position=position_nudge(y=0.15)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  scale_color_gradient(
+    low = "skyblue1",
+    high = "firebrick3",
+    name = "Mean PFAS\nConcentration",
+    breaks = c(1, 2, 3, 4),
+    labels = c("Lowest", "", "", "Highest")
+  ) +
+  labs(
+    x = "Standardized Regression Coefficient (± 95% CI)",
+    y = "PFAS",
+    title = "Egg Turning Rate (Overall/Hour)",
+  ) +
+  theme(
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    axis.line = element_line(color = "black"),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.position = "none")
+
+#
 # ----Q4) PFAS *TH+hourly turning rate on egg temperature ----
 # ------Goldeneye------ 
 COR <- GD1[, c("T3_T4","PFAS_SUM", "ClutchSize", "BodyCondition", "T3", "T4", "AVG_Temp_egg_Hour", "AVG_turns_hour")]
@@ -1219,99 +1231,56 @@ GDTemNULL <- lm(AVG_Temp_egg_Hour~ 1,data=GDTemFULL)
 AIC(GDTemPFAS,GDTemNULL)
 
 #Plot: PFAS on egg temperature 
-pfas_seq <- seq(min(GD1_scaled$PFAS_SUM, na.rm = TRUE),
-                max(GD1_scaled$PFAS_SUM, na.rm = TRUE),
-                length.out = 100)
-t3t4_mean <- mean(GD1_scaled$T3_T4, na.rm = TRUE)
+#GDTemT <- lm(AVG_Temp_egg_Hour~ PFAS_SUM*T3_T4, data=GD1_scaled)
+GD1_plot <- GD1_scaled[complete.cases(GD1_scaled[, c("PFAS_SUM", "T3_T4", "AVG_turns_hour")]), ]
 
-newdata <- data.frame(PFAS_SUM = pfas_seq,
-                      T3_T4 = t3t4_mean)
+mean_T3T4   <- mean(GD1_plot$T3_T4, na.rm = TRUE)
+mean_PFAS <- mean(GD1_plot$PFAS_SUM, na.rm = TRUE)
 
-pred <- predict(GDTemT, newdata, se.fit = TRUE)
-pfas_df <- data.frame(
-  PFAS_SUM = pfas_seq,
-  fit = pred$fit,
-  lower = pred$fit - 1.96*pred$se.fit,
-  upper = pred$fit + 1.96*pred$se.fit
+pfas_grid <- data.frame(
+  PFAS_SUM = seq(min(GD1_plot$PFAS_SUM), max(GD1_plot$PFAS_SUM), length.out = 100),
+  T3_T4 = mean_T3T4
 )
+pfas_pred <- predict(GDTemT, newdata = pfas_grid, interval = "confidence")
+pfas_grid$fit   <- pfas_pred[, "fit"]
+pfas_grid$lower <- pfas_pred[, "lwr"]
+pfas_grid$upper <- pfas_pred[, "upr"]
 
-ggplot(pfas_df, aes(x = PFAS_SUM, y = fit)) +
-  geom_line(color = "#B8923B", size = 1.2) +
+ggplot(pfas_grid, aes(x = PFAS_SUM, y = fit)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#B8923B", alpha = 0.15) +
-  labs(x = "PFAS (scaled)",
-       y = "Scaled average hourly egg temperature(°C)") +
+  geom_line(color = "#B8923B", size = 1.2) +
+  geom_point(data = GD1_plot, aes(x = PFAS_SUM, y = AVG_Temp_egg_Hour),
+             color = "#B8923B", alpha = 0.5, size = 3) +
+  labs(x = "∑PFAS (scaled)", y = "Average hourly egg temperature (scaled)") +
   theme_minimal(base_size = 14) +
   theme(
     panel.grid = element_blank(),
     axis.line = element_line(color = "black"),
     axis.ticks = element_line(color = "black")
   )
-#OR if I wanna plot PFAS and TH in a same plot
-GD1_model <- GD1_scaled[complete.cases(GD1_scaled$PFAS_SUM, GD1_scaled$T3_T4, GD1_scaled$AVG_Temp_egg_Hour), ]
-
-T3_mean <- mean(GD1_model$T3_T4, na.rm = TRUE)
-T3_sd   <- sd(GD1_model$T3_T4, na.rm = TRUE)
-T3_vals <- c(
-  Low = T3_mean - T3_sd,
-  Medium = T3_mean,
-  High = T3_mean + T3_sd
-)
-
-pred_grid <- expand.grid(
-  PFAS_SUM = seq(min(GD1_model$PFAS_SUM), max(GD1_model$PFAS_SUM), length.out = 100),
-  T3_T4 = T3_vals
-)
-
-pred <- predict(GDTemT, newdata = pred_grid, se.fit = TRUE)
-pred_grid$fit <- pred$fit
-pred_grid$lower <- pred$fit - 1.96 * pred$se.fit
-pred_grid$upper <- pred$fit + 1.96 * pred$se.fit
-
-pred_grid$T3_level <- factor(pred_grid$T3_T4, labels = c("Low", "Medium", "High"))
-
-ggplot() +
-  geom_point(data = GD1_model, aes(x = PFAS_SUM, y = AVG_Temp_egg_Hour),
-             color = "#B8923B", alpha = 0.5, size = 3) +
-  geom_line(data = pred_grid, aes(x = PFAS_SUM, y = fit, color = T3_level), size = 1.2) +
-  geom_ribbon(data = pred_grid, aes(x = PFAS_SUM, ymin = lower, ymax = upper, fill = T3_level),
-              alpha = 0.2, color = NA) +
-  scale_color_manual(values = c("#FFE699", "#FFCC33", "#B8923B")) +
-  scale_fill_manual(values = c("#FFE699", "#FFCC33", "#B8923B")) +
-  labs(x = "PFAS", y = "Predicted egg temperature (°C)", 
-       color = "T3:T4 level", fill = "T3:T4 level") +
-  theme(
-    panel.background = element_rect(fill = "transparent", colour = NA),
-    axis.line = element_line(color = "black"),
-    plot.background = element_rect(fill = "transparent", colour = NA)
-  )
 
 #Plot: T3:T4 on egg temperature 
-new_data <- data.frame(
-  T3_T4 = seq(min(GD1_scaled$T3_T4, na.rm = TRUE),
-           max(GD1_scaled$T3_T4, na.rm = TRUE),
-           length.out=100),
-  PFAS_SUM = mean(GD1_scaled$PFAS_SUM, na.rm=TRUE)
+t3_grid <- data.frame(
+  PFAS_SUM = mean_PFAS,
+  T3_T4 = seq(min(GD1_plot$T3_T4), max(GD1_plot$T3_T4), length.out = 100)
 )
+t3_pred <- predict(GDTemT, newdata = t3_grid, interval = "confidence")
+t3_grid$fit   <- t3_pred[, "fit"]
+t3_grid$lower <- t3_pred[, "lwr"]
+t3_grid$upper <- t3_pred[, "upr"]
 
-new_data_predict <- predict(GDTemT , newdata = new_data, type = "response", se.fit = TRUE)
-
-new_data_temp <- new_data %>%
-  mutate(
-    Predicted = new_data_predict$fit,
-    SE = new_data_predict$se.fit,
-    Lower = Predicted - 1.96 * SE,
-    Upper = Predicted + 1.96 * SE
-  )
-
-ggplot(new_data_temp, aes(x =T3_T4, y = Predicted)) +
-  geom_line(color = "#B8923B", size = 1, linetype="dotdash") +
-  geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "#B8923B", alpha = 0.3) +
+ggplot(t3_grid, aes(x = T3_T4, y = fit)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#B8923B", alpha = 0.15) +
+  geom_line(color = "#B8923B", size = 1.2, linetype="dashed") +
+  geom_point(data = GD1_plot, aes(x = T3_T4, y = AVG_Temp_egg_Hour),
+             color = "#B8923B", alpha = 0.5, size = 3) +
+  labs(x = "T3:T4 (scaled)", y = "Scaled average egg temperature (°C)") +
   theme_minimal(base_size = 14) +
   theme(
     panel.grid = element_blank(),
     axis.line = element_line(color = "black"),
-    axis.ticks = element_line(color = "black"))+
-  labs(title="", x="T3_T4(scaled)", y= "Scaled average egg temperature (°C)")
+    axis.ticks = element_line(color = "black")
+  )
 
 #PFASs all and egg temperature 
 coefs <- bind_rows(
@@ -1469,85 +1438,55 @@ AIC(EDTemPFAS,EDTemNULL)
 
 #Plotting# 
 #PFAS on egg temperature
-ED1_model <- ED1_complete[complete.cases(ED1_complete$PFAS_SUM, ED1_complete$T3_T4, ED1_complete$AVG_turns_hour), ]
-
-library(effects)
-pfas_eff <- allEffects(EDTemT)
-pfas_df <- as.data.frame(pfas_eff[["PFAS_SUM"]])
-
- ggplot(pfas_df, aes(x = PFAS_SUM, y = fit)) +
-  geom_line(color = "cornflowerblue", size = 1.2) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "cornflowerblue", alpha = 0.15) +
-  labs(x = "∑PFAS (scaled)", y = "Scaled average hourly egg temperature (°C)") +
-  theme_minimal(base_size = 14) +
-  theme(panel.grid = element_blank(),
-        axis.line = element_line(color = "black"))
-
- #OR: If I wanna show both PFAS and egg turning in a same plot 
-pred_grid <- expand.grid(
-  PFAS_SUM = seq(min(ED1_complete$PFAS_SUM, na.rm = TRUE),
-                 max(ED1_complete$PFAS_SUM, na.rm = TRUE),
-                 length.out = 100),
-  T3_T4 = mean(ED1_complete$T3_T4, na.rm = TRUE),          # hold at mean
-  AVG_turns_hour = c(mean(ED1_complete$AVG_turns_hour, na.rm = TRUE) - sd(ED1_complete$AVG_turns_hour, na.rm = TRUE),
-                     mean(ED1_complete$AVG_turns_hour, na.rm = TRUE),
-                     mean(ED1_complete$AVG_turns_hour, na.rm = TRUE) + sd(ED1_complete$AVG_turns_hour, na.rm = TRUE))
+#EDTemT <- lm(AVG_Temp_egg_Hour~ PFAS_SUM+T3_T4+AVG_turns_hour, data=ED1_complete)
+pfas_grid <- data.frame(
+  PFAS_SUM = seq(min(ED1_complete$PFAS_SUM), max(ED1_complete$PFAS_SUM), length.out = 100),
+  T3_T4 = mean(ED1_complete$T3_T4, na.rm = TRUE),
+  AVG_turns_hour = mean(ED1_complete$AVG_turns_hour, na.rm = TRUE)
 )
 
-pred <- predict(EDTemT, newdata = pred_grid, se.fit = TRUE)
+pfas_preds <- predict(EDTemT, newdata = pfas_grid, interval = "confidence")
+pfas_grid$fit <- pfas_preds[, "fit"]
+pfas_grid$lwr <- pfas_preds[, "lwr"]
+pfas_grid$upr <- pfas_preds[, "upr"]
 
-pred_grid$fit <- pred$fit
-pred_grid$lower <- pred$fit - 1.96 * pred$se.fit
-pred_grid$upper <- pred$fit + 1.96 * pred$se.fit
-pred_grid$turn_level <- factor(pred_grid$AVG_turns_hour,
-                               labels = c("Low turning", "Mean turning", "High turning"))
-
-ggplot() +
+ggplot(pfas_grid, aes(x = PFAS_SUM, y = fit)) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "cornflowerblue", alpha = 0.15) +
+  geom_line(color = "cornflowerblue", size = 1.2) +
   geom_point(data = ED1_complete, aes(x = PFAS_SUM, y = AVG_Temp_egg_Hour),
-             color = "cornflowerblue", alpha = 0.6, size = 3) +
-  geom_line(data = pred_grid, aes(x = PFAS_SUM, y = fit, color = turn_level), size = 1.2) +
-  geom_ribbon(data = pred_grid, aes(x = PFAS_SUM, ymin = lower, ymax = upper, fill = turn_level),
-              alpha = 0.15, color = NA) +
-  scale_color_manual(values = c("#AFC6E9", "cornflowerblue", "#0A3D91")) + 
-  scale_fill_manual(values = c("#AFC6E9", "cornflowerblue", "#0A3D91")) +
-  labs(x = "∑PFAS(scaled)", y = "Scaled average egg temperature (°C)", 
-       color = "Egg turning", fill = "Egg turning") +
+             alpha = 0.5, size = 3, color = "cornflowerblue") +
+  labs(x = "∑PFAS (scaled)", y = "Scaled average hourly egg temperature (°C)") +
   theme_minimal(base_size = 14) +
   theme(
     panel.grid = element_blank(),
-    axis.line = element_line(color = "black")
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
   )
 
 #Average egg turning on egg temperature 
-new_data <- data.frame(
-  T3_T4 = mean(ED1_complete$T3_T4, na.rm = TRUE),
-  AVG_turns_hour = seq (min(ED1_complete$AVG_turns_hour, na.rm=TRUE),
-                        max(ED1_complete$AVG_turns_hour, na.rm=TRUE),
-                        length.out=100),
-  PFAS_SUM= mean(ED1_complete$PFAS_SUM, na.rm=TRUE)
+turns_grid <- data.frame(
+  AVG_turns_hour = seq(min(ED1_complete$AVG_turns_hour), max(ED1_complete$AVG_turns_hour), length.out = 100),
+  PFAS_SUM = mean(ED1_complete$PFAS_SUM, na.rm = TRUE),
+  T3_T4 = mean(ED1_complete$T3_T4, na.rm = TRUE)
 )
 
+turns_preds <- predict(EDTemT, newdata = turns_grid, interval = "confidence")
+turns_grid$fit <- turns_preds[, "fit"]
+turns_grid$lwr <- turns_preds[, "lwr"]
+turns_grid$upr <- turns_preds[, "upr"]
 
-Tem_predict <- predict(EDTemT, newdata = new_data , type = "response", se.fit = TRUE)
-
-new_data <- new_data %>%
-  mutate(
-    Predicted = Tem_predict$fit,
-    SE = Tem_predict$se.fit,
-    Lower = Predicted - 1.96 * SE,
-    Upper = Predicted + 1.96 * SE
-  )
-
-ggplot(new_data, aes(x = AVG_turns_hour, y = Predicted)) +
-  geom_line(color = "cornflowerblue", size = 1.2) +
-  #geom_point(data = ED1, aes(x =  AVG_turns_hour, 
-   #                          y = AVG_Temp_egg_Hour), 
-    #         size = 3, color = "cornflowerblue", alpha = 0.5)+
-  geom_ribbon(aes(ymin = Lower, ymax = Upper), fill = "cornflowerblue", alpha = 0.3) +
+ggplot(turns_grid, aes(x = AVG_turns_hour, y = fit)) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "cornflowerblue", alpha = 0.15) +
+  geom_line(color = "#6495ED", size = 1.2) +
+  geom_point(data = ED1_complete, aes(x = AVG_turns_hour, y = AVG_Temp_egg_Hour),
+             alpha = 0.5, size = 3, color = "cornflowerblue") +
+  labs(x = "Average hourly egg turning (scaled)", y = "Scaled average hourly egg temperature (°C)") +
   theme_minimal(base_size = 14) +
-  theme(panel.grid = element_blank(),
-        axis.line = element_line(color = "black"))+
-  labs(title = "", x = "Average hourly turning frequency (scaled)", y = "Scaled average hourly egg temperature(°C)")
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
 
 ##PFASs all and egg temperature 
 coefs <- bind_rows(
