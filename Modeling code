@@ -332,7 +332,7 @@ T_test
 boxplot(GD1$AVG_turns_hour,ED1$AVG_turns_hour,
         names=c("Goldeneye", "Eider"),
         main=NA, 
-        ylab= "Average hourly egg turning frequency",
+        ylab= "Turning frequency (h-¹)",
         col=c("gold", "cornflowerblue"),
         border="black",
         notch = FALSE,
@@ -435,7 +435,7 @@ sum(!is.na(ED1$AVG_Temp_egg_Hour))
 boxplot(GD1$AVG_Temp_egg_Hour,ED1$AVG_Temp_egg_Hour,
         names=c("Goldeneye", "Eider"),
         main=NA, 
-        ylab= "Egg temperature (h⁻¹)",
+        ylab= "Average hourly egg temperature (°C)",
         col=c("gold", "cornflowerblue"),
         border="black",
         notch = FALSE,
@@ -448,7 +448,7 @@ boxplot(GD1$AVG_Temp_egg_Hour,ED1$AVG_Temp_egg_Hour,
 jitter <- 0.2
 points(jitter(rep(1,length(GD1$AVG_Temp_egg_Hour)), amount = jitter), GD1$AVG_Temp_egg_Hour, pch=16, cex=0.6, col="black")
 points(jitter(rep(2,length(ED1$AVG_Temp_egg_Hour)), amount = jitter), ED1$AVG_Temp_egg_Hour, pch=16, cex=0.6, col="black")
-text(x = 1, y = max(GD1$AVG_Temp_egg_Hour, ED1$AVG_Temp_egg_Hour, na.rm = TRUE) + 0.3, labels = "*", cex=2)
+text(x = 1, y = max(GD1$AVG_Temp_egg_Hour, ED1$AVG_Temp_egg_Hour, na.rm = TRUE) + 0.3, labels = "*", cex=1.5)
 
 # ----) Truning and Temp in relation to Incubation day----
 # ------In goldeneyes------
@@ -481,15 +481,26 @@ summary(get.models(Dredge_GLMM_turnPerDay, subset = 1)[[1]])
 summary(get.models(Dredge_GLMM_turnPerDay, subset = 2)[[1]])
 
 #Selected model
-IncDayGold <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1| FemaleID), family=nbinom1(),data = GD2_complete) #GD2 includes the same number of individuals. 
-# I removed the ziro inflation test as diagnostics proved it unnecessary 
+#GD2 includes the same number of individuals. 
+IncDayGold1 <- glmmTMB(turns_per_day ~ 1 + (1| FemaleID), family=nbinom1(),data = GD2_complete)
+IncDayGold2 <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1| FemaleID), family=nbinom1(),data = GD2_complete) 
+IncDayGold3 <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID), family=nbinom1(),data = GD2_complete)
+
+library(MuMIn)
+models <- list(
+  RandomIntercept = IncDayGold1,
+  FixedEffect = IncDayGold2,      
+  RandomSlope = IncDayGold3
+)
+sapply(models, AICc)
+# I removed the ziro inflation test as diagnostics proved it unnecessary
+#WINNER:
 IncDayGold <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID), family=nbinom1(),data = GD2_complete)
-#IncDayGold <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1| FemaleID), family=poisson(),data = GD2Final)
-#IncDayGold <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1| FemaleID), family=nbinom2(),data = GD2Final)
+#Adding ", ziformula = ~1" did not change anything
 summary(IncDayGold)
 length(unique(GD2_complete$FemaleID))
 IncNULL <- glmmTMB(turns_per_day ~ 1+ (1|FemaleID), family=nbinom1(), data= GD2_complete)
-AIC(IncDayGold, IncNULL)
+
 
 #Predicting the changes in turns/day to evaluate whether or not including it as covariate in the other analyses. 
 range(GD2_complete$Fullday.Incubation)
@@ -542,6 +553,15 @@ ggplot(GD2, aes(x = Fullday.Incubation, y = turns_per_day, color = FemaleID)) +
 
 #####Repeatability####
 IncDayGold <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1| FemaleID), family=nbinom1(),data = GD2_complete)#
+#Checking egg turning dispersion 
+mean(GD2_complete$turns_per_day, na.rm = TRUE)
+var(GD2_complete$turns_per_day, na.rm = TRUE)
+#
+m0 <- glm(turns_per_day ~ 1, family = poisson(), data = GD2_complete)
+
+disp <- sum(residuals(m0, type = "pearson")^2) / df.residual(m0)
+disp
+
 #ICC with performance::icc() # Doesn't provide CI with NB family 
 #icc_val <- icc(IncDayGold)
 #print(icc_val)
@@ -587,8 +607,21 @@ summary(get.models(Dredge_LMer_tempPerDay, subset = 1)[[1]])
 summary(get.models(Dredge_LMer_tempPerDay, subset = 2)[[1]])
 
 #Selected model
-IncDayGoldTemp <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1| FemaleID),data = GD2_complete) # GD2 containts the same individuals compared with GD2_complete
+IncDayGoldTemp1 <- lmer(AVG_Daily_Tem ~ 1+ (1| FemaleID),data = GD2_complete) # GD2 containts the same individuals compared with GD2_complete
+IncDayGoldTemp2 <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1| FemaleID),data = GD2_complete) # GD2 containts the same individuals compared with GD2_complete
+IncDayGoldTemp3 <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID),data = GD2_complete)
+
+library(MuMIn)
+models <- list(
+  RandomIntercept = IncDayGoldTemp1 ,
+  FixedEffect = IncDayGoldTemp2,      
+  RandomSlope = IncDayGoldTemp3
+)
+sapply(models, AICc)
+
+#WINNER
 IncDayGoldTemp <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID),data = GD2_complete)
+
 summary(IncDayGoldTemp)
 length(unique(GD2$FemaleID))
 IncNULL <- lmer(AVG_Daily_Tem ~ 1+ (1|FemaleID), data= GD2_complete)
@@ -697,8 +730,20 @@ summary(get.models(Dredge_GLMM_turnPerDay, subset = 1)[[1]])
 summary(get.models(Dredge_GLMM_turnPerDay, subset = 3)[[1]])
 
 #Selected model
-IncDayEider <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1|FemaleID),family=nbinom1(),data=ED2_complete)# Checking the output with the full dataset if the results remains unchanged 
-IncDayEider <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1+Fullday.Incubation|FemaleID), family=nbinom1(),data=ED2_complete)
+IncDayEider1 <- glmmTMB(turns_per_day ~ 1 + (1| FemaleID), family=nbinom1(),data = ED2_complete)
+IncDayEider2 <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1| FemaleID), family=nbinom1(),data = ED2_complete) 
+IncDayEider3 <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID), family=nbinom1(),data = ED2_complete)
+
+library(MuMIn)
+models <- list(
+  RandomIntercept = IncDayEider1,
+  FixedEffect = IncDayEider2,      
+  RandomSlope = IncDayEider3
+)
+sapply(models, AICc)
+#WINNER
+IncDayEider <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID), family=nbinom1(),data = ED2_complete)
+
 summary(IncDayEider)
 length(unique(ED2$FemaleID))
 IncNULL <- glmmTMB(turns_per_day ~ 1 + (1|FemaleID), family=nbinom1(), data=ED2_complete)
@@ -732,7 +777,16 @@ ggplot(ED2, aes(x = Fullday.Incubation, y = turns_per_day, color = FemaleID)) +
 
 #####Repeatability####
 IncDayEider <- glmmTMB(turns_per_day ~ Fullday.Incubation + (1|FemaleID), family=nbinom1(),data=ED2)
+#
+#Checking egg turning dispersion 
+hist(ED2$turns_per_day)
+mean(ED2$turns_per_day, na.rm = TRUE)
+var(ED2$turns_per_day, na.rm = TRUE)
+#
+m0 <- glm(turns_per_day ~ 1, family = poisson(), data = ED2)
 
+disp <- sum(residuals(m0, type = "pearson")^2) / df.residual(m0)
+disp
 # RPT
 EDrpt_result <- rpt(turns_per_day ~ Fullday.Incubation + (1|FemaleID),
                   grname = "FemaleID",  
@@ -798,8 +852,20 @@ summary(get.models(Dredge_GLMM_tempPerDay, subset = 1)[[1]])
 summary(get.models(Dredge_GLMM_tempPerDay, subset = 2)[[1]])
 
 #Selected model
-IncDayEDTemp <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1| FemaleID), data = ED2_complete) #ED2 has the same number of individuals
-#IncDayEDTemp <- lmer(AVG_Daily_Tem ~ Fullday.Incubation +(1+Fullday.Incubation| FemaleID),data = ED2_complete)
+IncDayEDTemp1 <- lmer(AVG_Daily_Tem ~ 1 + (1| FemaleID),data = ED2_complete)
+IncDayEDTemp2 <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1| FemaleID), data = ED2_complete) 
+IncDayEDTemp3 <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1+Fullday.Incubation| FemaleID),data = ED2_complete)
+
+library(MuMIn)
+models <- list(
+  RandomIntercept = IncDayEDTemp1,
+  FixedEffect = IncDayEDTemp2,      
+  RandomSlope = IncDayEDTemp3
+)
+sapply(models, AICc)
+#WINNER
+IncDayEDTemp <- lmer(AVG_Daily_Tem ~ Fullday.Incubation + (1| FemaleID), data = ED2_complete) 
+
 summary(IncDayEDTemp)
 length(unique(ED2_complete$FemaleID))
 IncNULL <- glmmTMB(AVG_Daily_Tem ~ 1+ (1|FemaleID), data= ED2_complete)
@@ -846,7 +912,7 @@ outlier_summary
 ##Running the model without them
 ED2_noOut <- ED2_complete[-outlierIndex, ]
 ED2_noOut <- subset(ED2_complete, !(FemaleID %in% c("DT081394","DT081224","DT081305","DT081306")))
-IncDayEDTemp <- glmmTMB(log(AVG_Daily_Tem+1) ~ Fullday.Incubation + (1| FemaleID),data = ED2_noOut)
+IncDayEDTemp <- glmmTMB(AVG_Daily_Tem ~ Fullday.Incubation + (1| FemaleID),data = ED2_noOut)
 summary(IncDayEDTemp)
 
 ## # Alos checking whether egg turning is related to egg temperature across incubation days 
@@ -944,31 +1010,31 @@ ED1_scaled$Weight <- as.numeric(scale(ED1$Weight))
 ED1_scaled$Days_to_Hatch  <- as.numeric(scale(ED1$Days_to_Hatch))
 #
 
-GD1_subset <- GD1_scaled[, c("T4","PFAS_SUM","BodyCondition")]
-GD1_subset <- GD1_scaled[, c("T3","PFOS","BodyCondition")]
-GD1_subset <- GD1_scaled[, c("T3","PFUnA","BodyCondition")]
-GD1_subset <- GD1_scaled[, c("T3_T4","PFNA","Weight")]
-GD1_subset <- (GD1_scaled[, c("T3","PFDoDA","BodyCondition")])
+GD1_subset <- GD1_scaled[, c("T4","PFAS_SUM","BodyCondition", "Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("T3_T4","PFOS","BodyCondition", "Days_to_Hatch" )]
+GD1_subset <- GD1_scaled[, c("T4","PFUnA","BodyCondition",  "Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("T4","PFNA","BodyCondition", "Days_to_Hatch")]
+GD1_subset <- (GD1_scaled[, c("T4","PFDoDA","BodyCondition",  "Days_to_Hatch")])
 GD1_subset <- na.omit(GD1_subset)
 GD1_subset$Species <- "GD"
 
-ED1_subset <- ED1_scaled[, c("T4","PFAS_SUM","BodyCondition")]
-ED1_subset <- ED1_scaled[, c("T3","PFOS","BodyCondition")]
-ED1_subset <- ED1_scaled[, c("T3","PFUnA","BodyCondition")]
-ED1_subset <- ED1_scaled[, c("T3_T4","PFNA","Weight")]
-ED1_subset <- (ED1_scaled[, c("T3","PFHxS","BodyCondition")])
+ED1_subset <- ED1_scaled[, c("T4","PFAS_SUM","BodyCondition","Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("T3_T4","PFOS","BodyCondition", "Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("T4","PFUnA","BodyCondition","Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("T4","PFNA","BodyCondition",  "Days_to_Hatch")]
+ED1_subset <- (ED1_scaled[, c("T4","PFHxS","BodyCondition", "Days_to_Hatch")])
 ED1_subset <- na.omit(ED1_subset)
 ED1_subset$Species <- "ED"
 
 combined_data <- rbind(GD1_subset, ED1_subset)
 combined_data$Species <- factor(combined_data$Species)
 
-Dredge_LM_PFAS_THs=dredge(lm(T4 ~ PFNA* Species,
-                               #PFNA*Weight,
-                             #ClutchSize,
+Dredge_LM_PFAS_THs=dredge(lm(T3_T4 ~ PFNA*Species+
+                               BodyCondition*Species+
+                               Days_to_Hatch,
                              data=combined_data,
                              na.action = "na.fail"),
-                          fixed = c("PFNA"),
+                          fixed = c("PFNA", "Species", "PFNA:Species"),
                           rank = "AICc",
                           trace = FALSE
 )
@@ -980,14 +1046,18 @@ summary(get.models(Dredge_LM_PFAS_THs , subset = 2)[[1]])
 summary(get.models(Dredge_LM_PFAS_THs , subset = 3)[[1]])
 summary(get.models(Dredge_LM_PFAS_THs , subset = 4)[[1]])
 summary(get.models(Dredge_LM_PFAS_THs , subset = 5)[[1]])
+#
+avg_mod <- model.avg(Dredge_LM_PFAS_THs)
+summary(avg_mod)
 # FOR THE MAJOR PFAS (PFHxS, PFDoDA) NOT COMMON IN BOTH SPECIES 
 Dredge_LM_PFAS_THs <- dredge(
-  lm(T3 ~ PFDoDA+
+  lm(T4 ~ PFHxS+
        BodyCondition +
-       BodyCondition:PFDoDA,
-     data = GD1_subset,
+       BodyCondition:PFHxS+
+       Days_to_Hatch,
+     data = ED1_subset,
      na.action = "na.fail"),
-  fixed = c(),  
+  fixed = c("PFHxS"),  
 )
 View(Dredge_LM_PFAS_THs)
 summary(get.models(Dredge_LM_PFAS_THs , subset = 1)[[1]])
@@ -996,16 +1066,151 @@ summary(get.models(Dredge_LM_PFAS_THs , subset = 3)[[1]])
 summary(get.models(Dredge_LM_PFAS_THs , subset = 4)[[1]])
 
 ##OUTPUT
-LM_THs<- lm(T3_T4~ PFNA*Weight, data=combined_data)
-LM_THs<- lm(T3~ PFAS_SUM*Species, data=combined_data)
+LM_THs<- lm(T4~ PFNA* Species+ BodyCondition*Species+Days_to_Hatch, data=combined_data)
 
 summary(LM_THs)
 nobs(LM_THs)
 vif(LM_THs)
 
+par(mfrow = c(2, 2))  
+plot(LM_THs)  
+shapiro.test(residuals(LM_THs))
+hist(residuals(LM_THs), breaks = 20, main = "Histogram of Residuals")
+
+#To explicitley get the slopes for each species 
 library(emmeans)
-emm <- emtrends(LM_THs, ~ Species, var = "")
+emm <- emtrends(LM_THs, ~ Species, var = "PFOS")
 summary(emm, infer = c(TRUE, TRUE))
+#BOOT
+# GD: PFNA-T4
+
+boot_fun_PFNA <- function(data, indices) {
+  d <- data[indices, ]                 # resample rows
+  fit <- lm(log(T4) ~ BodyCondition + PFNA, data = d)
+  return(coef(fit)["PFNA"])
+}
+
+boot_data <- na.omit(GD1_scaled[, c("T4", "BodyCondition", "PFNA")])
+
+set.seed(123)  # for reproducibility
+boot_PFNA <- boot(
+  data = boot_data,
+  statistic = boot_fun_PFNA,
+  R = 5000
+)
+boot_PFNA
+# Percentile CI
+boot.ci(boot_PFNA, type = "perc")
+boot.ci(boot_PFNA, type = "bca")
+#
+#ED: PFNA-T4
+
+boot_fun_interaction <- function(data, indices) {
+  d <- data[indices, ]                      # resample rows
+  fit <- lm(log(T4) ~ BodyCondition * PFNA, data = d)
+  return(coef(fit)["BodyCondition:PFNA"])   # slope of the interaction
+}
+boot_data <- na.omit(ED1_scaled[, c("T4","BodyCondition","PFNA")])
+
+set.seed(123)
+boot_inter <- boot(
+  data = boot_data,
+  statistic = boot_fun_interaction,
+  R = 5000
+)
+boot_inter
+
+boot.ci(boot_inter, type = "perc")
+boot.ci(boot_inter, type = "bca")
+
+### PLOT
+#GD
+
+plot_data <- GD1_scaled
+plot_data$fit <- predict(LM_THs, newdata = data.frame(
+  PFNA = plot_data$PFNA,
+  BodyCondition = mean(GD1_scaled$BodyCondition, na.rm = TRUE)
+))
+
+plot_data$lwr <- predict(LM_THs, newdata = data.frame(
+  PFNA = plot_data$PFNA,
+  BodyCondition = mean(GD1_scaled$BodyCondition, na.rm = TRUE)
+), interval = "confidence")[, "lwr"]
+
+plot_data$upr <- predict(LM_THs, newdata = data.frame(
+  PFNA = plot_data$PFNA,
+  BodyCondition = mean(GD1_scaled$BodyCondition, na.rm = TRUE)
+), interval = "confidence")[, "upr"]
+
+ggplot(GD1_scaled, aes(x = PFNA, y = log(T4))) +
+  geom_point(size = 2, alpha = 0.7, color = "#B8923B") +   # points same color as line
+  geom_line(data = pred_data, aes(x = PFNA, y = fit), 
+            color = "#B8923B", size = 1, inherit.aes = FALSE) +
+  geom_ribbon(data = pred_data, aes(x = PFNA, ymin = lwr, ymax = upr), 
+              fill = "#B8923B", alpha = 0.2, inherit.aes = FALSE) +
+  labs(x = "PFNA (scaled)", y = "log(T4)", 
+       title = "(A)") +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
+
+
+#ED
+
+BC_mean <- mean(ED1_scaled$BodyCondition, na.rm = TRUE)
+BC_sd   <- sd(ED1_scaled$BodyCondition, na.rm = TRUE)
+
+BC_low  <- BC_mean - BC_sd
+BC_high <- BC_mean + BC_sd
+
+newdat <- expand.grid(
+  PFNA = seq(min(ED1_scaled$PFNA, na.rm = TRUE),
+             max(ED1_scaled$PFNA, na.rm = TRUE),
+             length = 200),
+  BodyCondition = c(BC_low, BC_high)
+)
+
+pred <- predict(LM_THs, newdata = newdat, interval = "confidence")
+newdat$fit  = pred[, "fit"]
+newdat$lwr  = pred[, "lwr"]
+newdat$upr  = pred[, "upr"]
+
+newdat$BC_group <- factor(newdat$BodyCondition,
+                          labels = c("Mean - SD", "Mean + SD"))
+cols <- c("#6C8CD5", "#2A4FA4")   # light to darker cornflower blue
+
+
+ggplot() +
+  geom_point(data = ED1_scaled,
+             aes(PFNA, log(T4)), color="#2A4FA4",
+             alpha = 0.55, size = 2) +
+  # Confidence ribbon
+  geom_ribbon(data = newdat,
+              aes(x = PFNA, ymin = lwr, ymax = upr, fill = BC_group),
+              alpha = 0.25) +
+  # Fitted lines
+  geom_line(data = newdat,
+            aes(x = PFNA, y = fit, color = BC_group),
+            size = 1.3) +
+  scale_color_manual(values = cols) +
+  scale_fill_manual(values = cols) +
+  
+  labs(x = "PFNA (scaled)",
+       y = "log(T4)",
+       title = "(B)",
+       color = "Body condition",
+       fill = "Body condition") +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
+
 # ---- ) Nest attendance----
 ###EGG TURNING#### 
 GD1_scaled <- GD1
@@ -1019,6 +1224,7 @@ GD1_scaled$T4 <- as.numeric(scale(GD1_scaled$T4))
 GD1_scaled$ClutchSize <- as.numeric(scale(GD1_scaled$ClutchSize))
 GD1_scaled$AVG_Temp_egg_Hour <- as.numeric(scale(GD1_scaled$AVG_Temp_egg_Hour))
 GD1_scaled$BodyCondition <- as.numeric(scale(GD1_scaled$BodyCondition))
+#GD1_scaled$Days_to_Hatch <- as.numeric(scale(GD1_scaled$Days_to_Hatch))
 
 ED1_scaled <- ED1
 ED1_scaled$PFAS_SUM <- as.numeric(scale(ED1_scaled$PFAS_SUM))
@@ -1031,7 +1237,7 @@ ED1_scaled$T4 <- as.numeric(scale(ED1_scaled$T4))
 ED1_scaled$ClutchSize <- as.numeric(scale(ED1_scaled$ClutchSize))
 ED1_scaled$AVG_Temp_egg_Hour <- as.numeric(scale(ED1_scaled$AVG_Temp_egg_Hour))
 ED1_scaled$BodyCondition <- as.numeric(scale(ED1_scaled$BodyCondition))
-
+#ED1_scaled$Days_to_Hatch <- as.numeric(scale(ED1_scaled$Days_to_Hatch))
 #Testing whether or not to add clutch size for each species 
 summary(GD1$ClutchSize)
 sd(GD1$ClutchSize)
@@ -1045,25 +1251,30 @@ prop_3_5 <- n_3_5 / total_nests
 prop_3_5
 ## 
 #Combining goldeneye and eider dataset 
-
+#GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T4","ClutchSize")]# Also tried for ONLY T3, but there was nothing across species 
 #GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFAS_SUM","ClutchSize")] #We first selected the model including clutch size, but for the chosen model, we run the dataset without clutch size if the output remains the same and clutch size is not included in the chosen model
 GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFAS_SUM")]
+#GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFAS_SUM", "Days_to_Hatch","ClutchSize")]
 #GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFOS","ClutchSize")]
 GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFOS")]
-#GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFUnA","ClutchSize")]
+#GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFOS","Days_to_Hatch","ClutchSize")]
+#GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFUnA","ClutchSize","Days_to_Hatch")]
 GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFUnA")]
-GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFNA","ClutchSize")]
-GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFDoDA","ClutchSize")]
+GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFNA","ClutchSize","Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("AVG_turns_hour","T3","PFDoDA","ClutchSize","Days_to_Hatch")]
 GD1_subset <- na.omit(GD1_subset)
 GD1_subset$Species <- "Goldeneye"
 
+#ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T4","ClutchSize")]# ONLY WITH T3
 #ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFAS_SUM","ClutchSize")]
 ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFAS_SUM")]
+#ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFAS_SUM","Days_to_Hatch","ClutchSize")]
 #ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFOS","ClutchSize")]
 ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFOS")]
-#ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFUnA","ClutchSize")]
+#ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFOS","Days_to_Hatch","ClutchSize")]
+#ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFUnA","ClutchSize","Days_to_Hatch")]
 ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFUnA")]
-ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFNA","ClutchSize")]
+ED1_subset <- ED1_scaled[, c("AVG_turns_hour","T3","PFNA","ClutchSize","Days_to_Hatch")]
 ED1_subset <- na.omit(ED1_scaled[, c("AVG_turns_hour","T3","PFHxS","ClutchSize")])
 ED1_subset <- na.omit(ED1_subset)
 ED1_subset$Species <- "Eider"
@@ -1075,19 +1286,22 @@ correlation_matrix <- cor(COR, method="spearman", use = "complete.obs")
 res <- rcorr(as.matrix(COR), type = "spearman")
 res$r   
 res$P 
+
 #
 Dredge_LM_Turns <- dredge(
-  lm(AVG_turns_hour ~ PFAS_SUM*Species +
+  lm(AVG_turns_hour ~ PFNA*Species +
        T3+
-       #BodyCondition +
-       #BodyCondition:T3 + BodyCondition:PFUnA+ 
-       ClutchSize+
-       ClutchSize:PFAS_SUM,
+       Days_to_Hatch+
+       ClutchSize,
      data = combined_data,
      na.action = "na.fail"),
-  fixed = c(),  
+  fixed = c("PFNA","Species","PFNA:Species"),
+  rank = "AICc",
+  trace = FALSE
 )
+
 View(Dredge_LM_Turns)
+
 summary(get.models(Dredge_LM_Turns , subset = 1)[[1]])
 summary(get.models(Dredge_LM_Turns , subset = 2)[[1]])
 summary(get.models(Dredge_LM_Turns , subset = 3)[[1]])
@@ -1140,8 +1354,8 @@ ggplot(combined_data, aes(x = PFAS_SUM, y = AVG_turns_hour, color = Species)) +
   geom_smooth(aes(fill = Species), method = "lm", se = TRUE, alpha = 0.2) +
   scale_color_manual(values = c("Goldeneye" = "#B8923B", "Eider" = "cornflowerblue")) +
   scale_fill_manual(values = c("Goldeneye" = "#B8923B", "Eider" = "cornflowerblue")) +
-  labs(x = "∑PFAS(scaled)",
-       y = "Turning frequency (h⁻¹)",
+  labs(x = "???PFAS(scaled)",
+       y = "Turning frequency (h???¹)",
        title="(A)") +
   theme_minimal(base_size = 14) +
   theme(
@@ -1166,16 +1380,19 @@ slopes <- bind_rows(
     rename(estimate = PFNA.trend) %>% 
     mutate(compound = "PFNA")
 ) %>% 
-  mutate(sig_label = case_when(
-    p.value < 0.001 ~ "***",
-    p.value < 0.01  ~ "**",
-    p.value < 0.05  ~ "*",
-    TRUE ~ ""
-  ))
+  mutate(
+    sig_label = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE ~ ""
+    ),
+    dashed_ci = Species == "Goldeneye" & compound == "PFUnA"
+  )
 
 species_colors <- list(
   "Eider" = c("PFUnA" = "#B3D1FF", "PFNA" = "#82B3FF", "PFOS" = "cornflowerblue"),
-  "Goldeneye" = c("PFNA" = "gold2","PFUnA" = "#D1A12C", "PFOS" = "#8B6E3C")
+  "Goldeneye" = c("PFNA" = "gold2", "PFUnA" = "#D1A12C", "PFOS" = "#8B6E3C")
 )
 
 slopes <- slopes %>%
@@ -1183,20 +1400,42 @@ slopes <- slopes %>%
   mutate(color = species_colors[[Species]][compound]) %>%
   ungroup()
 
-
 ggplot(slopes, aes(x = estimate, y = reorder(compound, estimate), color = color)) +
-  geom_point(position = position_dodge(width = 0.6), size = 3) +
-  geom_errorbarh(aes(xmin = lower.CL, xmax = upper.CL), height = 0.2,
-                 position = position_dodge(width = 0.6)) +
-  geom_text(aes(label = sig_label), position = position_dodge(width = 0.6),
-            hjust = -0.3, vjust = 0.2, size = 5) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
-  labs(
-    x = "Slope of PFAS effect on egg turning rate (h⁻¹)",
-    y = "Major PFAS",
-    title = ""
+  geom_point(
+    position = position_dodge(width = 0.6),
+    size = 3
   ) +
-  scale_color_identity() +  # use the colors directly from the column
+  geom_errorbarh(
+    aes(
+      xmin = lower.CL,
+      xmax = upper.CL,
+      linetype = dashed_ci
+    ),
+    height = 0.2,
+    position = position_dodge(width = 0.6)
+  ) +
+  geom_text(
+    aes(label = sig_label),
+    position = position_dodge(width = 0.6),
+    hjust = -0.3,
+    vjust = 0.2,
+    size = 5
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    color = "gray40"
+  ) +
+  labs(
+    x = expression("Slope of PFAS effect on egg turning rate (" * h^{-1} * ")"),
+    y = "Major PFAS",
+    title = "(B)"
+  ) +
+  scale_color_identity() +
+  scale_linetype_manual(
+    values = c(`TRUE` = "dashed", `FALSE` = "solid"),
+    guide = "none"
+  ) +
   theme_minimal(base_size = 14) +
   theme(
     panel.grid = element_blank(),
@@ -1205,43 +1444,47 @@ ggplot(slopes, aes(x = estimate, y = reorder(compound, estimate), color = color)
   )
 
 ##EGG TEMP####
-
+#We should keep recorded duration and average egg turning, as fixed effects. 
 GD1_scaled <- GD1
 GD1_scaled$PFAS_SUM <- as.numeric(scale(GD1_scaled$PFAS_SUM))
 GD1_scaled$T3 <- as.numeric(scale(GD1_scaled$T3))
 GD1_scaled$AVG_turns_hour <- as.numeric(scale(GD1_scaled$AVG_turns_hour))
 GD1_scaled$ClutchSize <- as.numeric(scale(GD1_scaled$ClutchSize))
-#GD1_scaled$BodyCondition <- as.numeric(scale(GD1_scaled$BodyCondition))
 GD1_scaled <- GD1_scaled%>%
   rename( Days.recorded =RecordedDays)
 GD1_scaled$Days.recorded <- as.numeric(scale(GD1_scaled$Days.recorded))
+GD1_scaled$Days_to_Hatch <- as.numeric(scale(GD1_scaled$Days_to_Hatch))
 
 ED1_scaled <- ED1
 ED1_scaled$PFAS_SUM <- as.numeric(scale(ED1_scaled$PFAS_SUM))
 ED1_scaled$T3 <- as.numeric(scale(ED1_scaled$T3))
 ED1_scaled$AVG_turns_hour <- as.numeric(scale(ED1_scaled$AVG_turns_hour))
 ED1_scaled$ClutchSize <- as.numeric(scale(ED1_scaled$ClutchSize))
-#ED1_scaled$BodyCondition <- as.numeric(scale(ED1_scaled$BodyCondition))
 ED1_scaled$Days.recorded <- as.numeric(scale(ED1_scaled$Days.recorded))
-
+ED1_scaled$Days_to_Hatch <- as.numeric(scale(ED1_scaled$Days_to_Hatch))
 #
-#GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","ClutchSize", "Days.recorded")] # We selected the model while including clutch size. If clutch size was not included in the selected model, we ran the final model without clutch size also to use the max observations
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Days.recorded")]
-#GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","ClutchSize", "Days.recorded")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","Days.recorded")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA","ClutchSize", "Days.recorded")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA","ClutchSize", "Days.recorded")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFDoDA","ClutchSize", "Days.recorded")]
+## We selected the model while including clutch size. If clutch size was not included in the selected model, we ran the final model without clutch size also to use the max observations
+#GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Days.recorded","ClutchSize","Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFAS_SUM","T3")]
+#GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","Days.recorded","ClutchSize","Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS")]
+#GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA","Days.recorded","ClutchSize","Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA")]
+#GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA","Days.recorded","ClutchSize","Days_to_Hatch")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFDoDA","Days.recorded")]
 GD1_subset <- na.omit(GD1_subset)
 GD1_subset$Species <- "Goldeneye"
 
-#ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","ClutchSize","Days.recorded")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Days.recorded")]
-#ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","ClutchSize","Days.recorded")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","Days.recorded")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA","ClutchSize","Days.recorded")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA","ClutchSize","Days.recorded")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFHxS","ClutchSize","Days.recorded")]
+#ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Days.recorded","ClutchSize","Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFAS_SUM","T3")]
+#ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","Days.recorded", "ClutchSize","Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS")]
+#ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA","Days.recorded","ClutchSize","Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA")]
+#ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA","Days.recorded","ClutchSize","Days_to_Hatch")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFHxS","Days.recorded", "ClutchSize", "Days_to_Hatch")]
 ED1_subset <- na.omit(ED1_subset)
 ED1_subset$Species <- "Eider"
 
@@ -1249,45 +1492,82 @@ combined_data <- rbind(GD1_subset, ED1_subset)
 
 Dredge_LM_Temp=dredge(lm(AVG_Temp_egg_Hour ~  PFAS_SUM* Species+ 
                            T3+
-                              #BodyCondition+
                            ClutchSize+
-                           ClutchSize:T3+
+                           Days_to_Hatch+
                               AVG_turns_hour+
-                           #BodyCondition:T3+
-                              #BodyCondition:PFAS_SUM+
                            Days.recorded,
                             data=combined_data,
                             na.action = "na.fail"),
-                         fixed = c("PFAS_SUM:Species")
+                      fixed = c("PFAS_SUM","Species","PFAS_SUM:Species"),
+                      rank = "AICc",
+                      trace = FALSE
 )
+
 View(Dredge_LM_Temp)
 summary(get.models(Dredge_LM_Temp , subset = 1)[[1]])
 summary(get.models(Dredge_LM_Temp , subset = 2)[[1]])
 summary(get.models(Dredge_LM_Temp , subset = 3)[[1]])
+summary(get.models(Dredge_LM_Temp , subset = 4)[[1]])
 
 model.avg(Dredge_LM_Temp)
 sw(Dredge_LM_Temp)
 
 ##FOR major compounds that differ between species: PFDoDA and PFHxS
-Dredge_LM_Temp=dredge(lm(AVG_Temp_egg_Hour ~  PFDoDA + T3+
+Dredge_LM_Temp=dredge(lm(AVG_Temp_egg_Hour ~  PFHxS+ T3+
                            AVG_turns_hour+
                            ClutchSize+
-                           ClutchSize:T3+
+                           Days_to_Hatch+
                            Days.recorded,
-                         data=GD1_subset,
+                         data=ED1_subset,
                          na.action = "na.fail"),
-                      fixed = c("PFDoDA"),
+                      fixed = c("PFHxS"),
 )
 View(Dredge_LM_Temp)
 summary(get.models(Dredge_LM_Temp , subset = 1)[[1]])
 summary(get.models(Dredge_LM_Temp , subset = 2)[[1]])
 summary(get.models(Dredge_LM_Temp , subset = 3)[[1]])
 
-# OUTPUT1) Since recorded days was correlated with Eider temeprature, 
-LM_Temp <- lm(AVG_Temp_egg_Hour~ Days.recorded+AVG_turns_hour+PFAS_SUM, data=combined_data)# negative RELATIONSHIP between days recorded and egg temperature if we do not force the model to retain PFAS:Species
+#
+#OUTPUT1) 
+#FOR all significant models, re-fitting and reporting the largest possible dataste, if the output remains unchanged. Also, including Incubation_stage did not change the result 
+LM_Temp <- lm(AVG_Temp_egg_Hour~ AVG_turns_hour+PFAS_SUM*Species, data=combined_data)
+summary(LM_Temp)
+
+#
+LM_TempPFOS <- lm(AVG_Temp_egg_Hour~ AVG_turns_hour+PFOS*Species, data=combined_data)
+summary(LM_TempPFOS)
+#
+#LM_TempPFUnA <- lm(AVG_Temp_egg_Hour~ PFUnA*Species+AVG_turns_hour, data=combined_data)
+#LM_TempPFNA <- lm(AVG_Temp_egg_Hour~ PFNA*Species+AVG_turns_hour, data=combined_data)
 summary(LM_Temp)
 nobs(LM_Temp)
 car::vif(LM_Temp, type = "predictor")
+#
+#To explicitley get the slopes for each species 
+library(emmeans)
+emm <- emtrends(LM_Temp, ~ Species, var = "PFAS_SUM")
+summary(emm, infer = c(TRUE, TRUE))
+
+#Model fit check 
+par(mfrow = c(2, 2))  
+plot(LM_Temp)  
+shapiro.test(residuals(LM_Temp))
+hist(residuals(LM_Temp), breaks = 20, main = "Histogram of Residuals")
+
+# Essential explanatory:
+#For the relationship between egg turning and temperature 
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","Days.recorded")]
+GD1_subset <- na.omit(GD1_subset)
+GD1_subset$Species <- "Goldeneye"
+
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","Days.recorded")]
+ED1_subset <- na.omit(ED1_subset)
+ED1_subset$Species <- "Eider"
+
+combined_data <- rbind(GD1_subset, ED1_subset)
+
+LM_Temp <- lm(AVG_Temp_egg_Hour~ Species*AVG_turns_hour+Days.recorded, data=combined_data)
+
 #Checking whether PFAS is linked with recorded duration 
 names(ED1)[names(ED1) == "Total record (Hour)"] <- "Hours_recorded"
 ED1$Hours_recorded <- as.numeric(ED1$Hours_recorded)
@@ -1295,6 +1575,7 @@ class(ED1$PFAS_SUM)
 ED1$Days.recorded <- as.numeric(ED1$Days.recorded)
 
 model1 <- lm(PFAS_SUM ~ Days.recorded, data = ED1)
+model1 <- lm(PFOS ~ Days.recorded, data = ED1)
 summary(model1)
 nobs(model1)
 
@@ -1317,68 +1598,22 @@ ggplot(ED1, aes(x = Days.recorded, y = PFAS_SUM)) +
     axis.ticks = element_line(color = "black")
   )
 
-#OUTPUT2) 
-LM_Temp <- lm(AVG_Temp_egg_Hour~ PFAS_SUM*Species+AVG_turns_hour, data=combined_data) #FOR all significant models, re-fitting and reporting the largest possible dataste, if the output remains unchanged 
-#
-LM_TempPFOS <- lm(AVG_Temp_egg_Hour~ PFOS*Species+AVG_turns_hour, data=combined_data)
-#
-#LM_TempPFUnA <- lm(AVG_Temp_egg_Hour~ PFUnA*Species+AVG_turns_hour, data=combined_data)
-#LM_TempPFNA <- lm(AVG_Temp_egg_Hour~ PFNA*Species+AVG_turns_hour, data=combined_data)
-summary(LM_Temp)
-nobs(LM_Temp)
-car::vif(LM_Temp, type = "predictor")
-#
-#To explicitley get the slopes for each species 
-library(emmeans)
-emm <- emtrends(LM_Temp, ~ Species, var = "PFAS_SUM")
-summary(emm, infer = c(TRUE, TRUE))
-pairs(emm)
-#Model fit check 
-par(mfrow = c(2, 2))  
-plot(LM_Temp)  
-shapiro.test(residuals(LM_Temp))
-hist(residuals(LM_Temp), breaks = 20, main = "Histogram of Residuals")
- 
-## Testing whether PFAS and temperature correaltion is strong in the presence of variation in recorded days 
-LM_Temp <- lm(AVG_Temp_egg_Hour~ PFAS_SUM+ Days.recorded+AVG_turns_hour, data=combined_data)
-model_full <- lm(AVG_Temp_egg_Hour ~ PFAS_SUM + Days.recorded+AVG_turns_hour, data = ED1)
-summary(model_full)
-car::vif(model_full, type = "predictor")
-#For the relationship between egg turning and temperature 
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","Days.recorded")]
-GD1_subset <- na.omit(GD1_subset)
-GD1_subset$Species <- "Goldeneye"
-
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","Days.recorded")]
-ED1_subset <- na.omit(ED1_subset)
-ED1_subset$Species <- "Eider"
-
-combined_data <- rbind(GD1_subset, ED1_subset)
-
-LM_Temp <- lm(AVG_Temp_egg_Hour~ Species*AVG_turns_hour+Days.recorded, data=combined_data)
-#LM_Temp2<- lm(AVG_Temp_egg_Hour~ Species*AVG_turns_hour, data=combined_data)
-#summary(LM_Temp2)
-#library(MuMIn)
-#AICc(LM_Temp1, LM_Temp2)
-
 # PLOT
-
 ggplot(combined_data, aes(x = PFAS_SUM, y = AVG_Temp_egg_Hour, color = Species)) +
   geom_point(alpha = 0.6) +
   geom_smooth(aes(fill = Species), method = "lm", se = TRUE, alpha = 0.2) +
   scale_color_manual(values = c("Goldeneye" = "#B8923B", "Eider" = "cornflowerblue")) +
   scale_fill_manual(values = c("Goldeneye" = "#B8923B", "Eider" = "cornflowerblue")) +
-  labs(x = "∑PFAS(scaled)",
-       y = "Egg temperature (h⁻¹)",
+  labs(x = "∑PFAS",
+       y = "Average hourly egg temperature (°C)",
        title="(A)") +
-  theme_minimal(base_size = 12) +
+  theme_minimal(base_size = 14) +
   theme(
     panel.grid = element_blank(),
     axis.line = element_line(color = "black"),
     axis.ticks = element_line(color = "black")
   )
 
-#
 # FOR Major compounds in common between two species 
 emm_PFOS  <- emtrends(LM_TempPFOS,  ~ Species, var = "PFOS")
 emm_PFUnA <- emtrends(LM_TempPFUnA, ~ Species, var = "PFUnA")
@@ -1421,7 +1656,7 @@ ggplot(slopes, aes(x = estimate, y = reorder(compound, estimate), color = color)
             hjust = 0.4, vjust = 0.0, size = 5) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
   labs(
-    x = "Slope of PFAS effect on egg temperature(h⁻¹)",
+    x = "Slope of PFAS correlation with egg temperature (°C)",
     y = "Major PFAS",
     title = "(B)"
   ) +
@@ -1432,6 +1667,7 @@ ggplot(slopes, aes(x = estimate, y = reorder(compound, estimate), color = color)
     axis.line = element_line(color = "black"),
     legend.position = "right"
   )
+
 # For egg turning and temperature 
 ggplot(combined_data, aes(x = AVG_turns_hour, y = AVG_Temp_egg_Hour, color = Species)) +
   geom_point(alpha = 0.6, size = 2) +
@@ -1439,8 +1675,8 @@ ggplot(combined_data, aes(x = AVG_turns_hour, y = AVG_Temp_egg_Hour, color = Spe
   scale_color_manual(values = c("Goldeneye" = "#B8923B", "Eider" = "cornflowerblue")) +
   scale_fill_manual(values = c("Goldeneye" = "#B8923B", "Eider" = "cornflowerblue")) +
   labs(
-    x = "Average egg turning frequency (h⁻¹)",
-    y = "Scaled average egg temperature (h⁻¹)",
+    x = "Average egg turning frequency (h-¹)",
+    y = "Average egg temperature (h-¹)",
     title = ""
   ) +
   theme_minimal(base_size = 12) +
@@ -1473,45 +1709,56 @@ ED1_scaled$T3 <- as.numeric(scale(ED1_scaled$T3))
 ED1_scaled$AVG_turns_hour <- as.numeric(scale(ED1_scaled$AVG_turns_hour))
 ED1_scaled$Hatched_eggs <- as.numeric(as.character(ED1_scaled$Hatched_eggs))
 
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Hatched_eggs","ClutchSize")]
-#GD1_subset <- GD1_scaled[, c("T3","PFAS_SUM","Hatched_eggs","ClutchSize")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","Hatched_eggs","ClutchSize")]
-#GD1_subset <- GD1_scaled[, c("T3","PFOS","Hatched_eggs","ClutchSize")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA","Hatched_eggs","ClutchSize")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA","Hatched_eggs","ClutchSize")]
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFDoDA","Hatched_eggs","ClutchSize")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","PFAS_SUM","Hatched_eggs","ClutchSize")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFOS","Hatched_eggs","ClutchSize")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFUnA","Hatched_eggs","ClutchSize")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFNA","Hatched_eggs","ClutchSize")]
+GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFDoDA","Hatched_eggs","ClutchSize")]
 GD1_subset <- na.omit(GD1_subset)
 GD1_subset$Species <- "Goldeneye"
 
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Hatched_eggs","ClutchSize")]
-#ED1_subset <- ED1_scaled[, c("T3","PFAS_SUM","Hatched_eggs","ClutchSize")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFOS","Hatched_eggs","ClutchSize")]
-#ED1_subset <- ED1_scaled[, c("T3","PFOS","Hatched_eggs","ClutchSize")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFUnA","Hatched_eggs","ClutchSize")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFNA","Hatched_eggs","ClutchSize")]
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFHxS","Hatched_eggs","ClutchSize")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","PFAS_SUM","Hatched_eggs","ClutchSize")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFOS","Hatched_eggs","ClutchSize")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFUnA","Hatched_eggs","ClutchSize")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFNA","Hatched_eggs","ClutchSize")]
+ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","AVG_turns_hour","PFHxS","Hatched_eggs","ClutchSize")]
 ED1_subset <- na.omit(ED1_subset)
 ED1_subset$Species <- "Eider"
 
 combined_data <- rbind(GD1_subset, ED1_subset)
 combined_data$ClutchSize <- as.numeric(as.character(combined_data$ClutchSize))
 combined_data$Hatched_eggs <- as.numeric(as.character(combined_data$Hatched_eggs))
-combined_hatch <- na.omit(combined_data[, c("Species","AVG_Temp_egg_Hour","AVG_turns_hour","T3","PFAS_SUM","Hatched_eggs","ClutchSize")])
+combined_hatch <- na.omit(combined_data[, c("Species","AVG_Temp_egg_Hour","PFAS_SUM","Hatched_eggs","ClutchSize")])
 #combined_hatch <- na.omit(combined_data[, c("Species","T3","PFAS_SUM","Hatched_eggs","ClutchSize")])
 
 Dredge_Hatch <- dredge(
   glm(
     cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~  
       PFAS_SUM * Species + 
-      #AVG_Temp_egg_Hour+
-      #AVG_turns_hour+
-      T3,
+      AVG_Temp_egg_Hour,
+      #AVG_turns_hour,
     data = combined_hatch,
     family = binomial(),
     na.action = "na.fail"
   ),
-  fixed = c("PFAS_SUM")
+  fixed = c("PFAS_SUM","Species","PFAS_SUM:Species"),
+  rank = "AICc",
+  trace = FALSE
 )
+#Quasibinomial
+Dredge_Hatch <- dredge(
+  glm(cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~  
+      PFAS_SUM * Species + 
+      AVG_Temp_egg_Hour,
+      #AVG_turns_hour,
+    data = combined_hatch,
+    family = quasibinomial(),
+    na.action = "na.fail"
+  ),
+  fixed = c("PFAS_SUM","Species","PFAS_SUM:Species"),
+  trace = FALSE 
+)
+
 
 View(Dredge_Hatch)
 summary(get.models(Dredge_Hatch , subset = 1)[[1]])
@@ -1544,48 +1791,28 @@ summary(get.models(Dredge_Hatch , subset = 2)[[1]])
 summary(get.models(Dredge_Hatch , subset = 3)[[1]])
 summary(get.models(Dredge_Hatch , subset = 4)[[1]])
 ##OUTPUT
-#glm_Hatch <- glm(
- # cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~ 
-  #  PFAS_SUM * Species + AVG_Temp_egg_Hour, data = combined_hatch, family = quasibinomial()) #Binomial or quasibinomial 
-#OR
 glm_Hatch <- glm(
   cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~ 
-    Species*PFAS_SUM+T3 , data = combined_hatch, family = quasibinomial())
-
-glm_HatchPFOS <- glm(
-  cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~ 
-    PFOS * Species + AVG_Temp_egg_Hour, data = combined_hatch, family = quasibinomial())
-
-# Just for egg temperature 
-GD1_scaled <- GD1
-GD1_scaled$AVG_Temp_egg_Hour <- as.numeric(GD1_scaled$AVG_Temp_egg_Hour)
-
-ED1_scaled <- ED1
-ED1_scaled$AVG_Temp_egg_Hour <- as.numeric(ED1_scaled$AVG_Temp_egg_Hour)
-ED1_scaled$Hatched_eggs <- as.numeric(as.character(ED1_scaled$Hatched_eggs))
-
-GD1_subset <- GD1_scaled[, c("AVG_Temp_egg_Hour","Hatched_eggs","ClutchSize")]
-GD1_subset <- na.omit(GD1_subset)
-GD1_subset$Species <- "Goldeneye"
-
-ED1_subset <- ED1_scaled[, c("AVG_Temp_egg_Hour","Hatched_eggs","ClutchSize")]
-ED1_subset <- na.omit(ED1_subset)
-ED1_subset$Species <- "Eider"
-
-combined_data <- rbind(GD1_subset, ED1_subset)
-combined_data$ClutchSize <- as.numeric(as.character(combined_data$ClutchSize))
-combined_data$Hatched_eggs <- as.numeric(as.character(combined_data$Hatched_eggs))
-combined_hatch <- na.omit(combined_data[, c("Species","AVG_Temp_egg_Hour","Hatched_eggs","ClutchSize")])
+    Species*PFAS_SUM+AVG_Temp_egg_Hour , data = combined_hatch, family = quasibinomial())
 
 glm_Hatch <- glm(
-  cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~ AVG_Temp_egg_Hour, data = combined_hatch, family = quasibinomial()) 
+  cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~  PFAS_SUM*Species + AVG_Temp_egg_Hour, data = combined_hatch, family = quasibinomial())
+
+glm_HatchT <- glm(
+  cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~ AVG_Temp_egg_Hour+Species, data = combined_hatch, family = quasibinomial()) 
+#and
+glm_HatchT <- glm(
+  cbind(Hatched_eggs, ClutchSize - Hatched_eggs) ~ AVG_Temp_egg_Hour*Species, data = combined_hatch, family = quasibinomial()) 
+
+anova(glm_HatchT, glm_Hatch, test = "F")
+
 
 #
-summary(glm_Hatch)
+summary(glm_HatchT)
 nobs(glm_Hatch)
 vif(glm_Hatch)
 #To explicitly get the slopes for each species 
-emm <- emtrends(glm_Hatch, ~ Species, var = "AVG_Temp_egg_Hour")
+emm <- emtrends(glm_Hatch, ~ Species, var = "PFAS_SUM")
 summary(emm, infer = c(TRUE, TRUE))
 #
 #Model check
@@ -1598,8 +1825,8 @@ simres <- simulateResiduals(glm_Hatch, n=1000)
 plot(simres)
 testDispersion(simres)
 # AND
-overdispersion <- sum(residuals(glm_Hatch, type="pearson")^2) /
-  df.residual(glm_Hatch)
+overdispersion <- sum(residuals(glm_HatchPFOS, type="pearson")^2) /
+  df.residual(glm_HatchPFOS)
 
 overdispersion # High overdispersion with binomial family. Thus, I switch to quasibinomial. But that won't change the overdispersion value 
 
@@ -1627,7 +1854,7 @@ visreg(
   glm_Hatch,
   xvar = "PFAS_SUM",
   by = "Species",
-  scale = "response",     # convert logit → probability
+  scale = "response",     # convert logit ??? probability
   overlay = TRUE,         # show both species together
   rug = FALSE,            # no rug marks
   band = TRUE,            # 95% CI bands
@@ -1646,7 +1873,7 @@ ggplot(combined_hatch, aes(x = AVG_Temp_egg_Hour, y = HatchProp, color = Species
   scale_color_manual(values = c("Eider" = "cornflowerblue", "Goldeneye" = "#B8923B")) +
   scale_fill_manual(values = c("Eider" = "cornflowerblue", "Goldeneye" = "#B8923B")) +
   labs(
-    x = "Egg temperature (h⁻¹)",
+    x = "Egg temperature (h???¹)",
     y = "Hatching Success (proportion)",
     color = "Species",
     fill = "Species"
@@ -1705,28 +1932,28 @@ LM_Turns<- lm(AVG_turns_hour~ PFAS_SUM*Species, data=combined_data)
 summary(LM_Turns)
 #---#
 library(boot)
-#Boostrap function 
+
 boot_fun_gold <- function(data, indices) {
   d <- data[indices, ]
-  fit <- lm(AVG_turns_hour ~ PFAS_SUM*Species, data = d)
-  
-  em <- emtrends(fit, ~Species, var = "PFAS_SUM") |> summary(infer = FALSE)
-  
-  if("Goldeneye" %in% em$Species) {
-    return(em$PFAS_SUM.trend[em$Species == "Goldeneye"])
-  } else {
-    return(NA)
-  }
+  fit <- lm(
+    AVG_turns_hour ~ PFAS_SUM * Species,
+    data = d
+  )
+  coef(fit)["PFAS_SUM"] +
+    coef(fit)["PFAS_SUM:SpeciesGoldeneye"]
 }
 
 set.seed(123)
-boot_gold <- boot(combined_data, statistic = boot_fun_gold, R = 5000)
-boot_gold 
-#Bootstap distribution and CI:
-boot_vals <- boot_gold$t[,1]
-orig_val  <- boot_gold$t0
-ci_gold <- boot.ci(boot_gold, type = "perc")$percent[4:5]
-ci_gold
+boot_gold <- boot(
+  data = combined_data,
+  statistic = boot_fun_gold,
+  R = 5000
+)
+
+# Bootstrap CIs
+boot.ci(boot_gold, type = "perc")
+boot.ci(boot_gold, type = "bca")
+
 
 #PLOT 1)
 plot_data <- data.frame(slope = boot_vals)
@@ -1838,41 +2065,42 @@ ggplot(plot_data, aes(x = slope)) +
 
 #
 #4)
-LM_Temp <- lm(AVG_Temp_egg_Hour~ PFAS_SUM*Species+AVG_turns_hour, data=combined_data)
+LM_Temp <- lm(AVG_Temp_egg_Hour~ AVG_turns_hour+PFAS_SUM*Species, data=combined_data)
 summary(LM_Temp)
+#
+LM_TempPFOS <- lm(AVG_Temp_egg_Hour~ AVG_turns_hour+PFOS*Species, data=combined_data)
+summary(LM_TempPFOS)
 
 boot_fun_eider <- function(data, indices) {
   d <- data[indices, ]
-  fit <- lm(AVG_Temp_egg_Hour ~ PFAS_SUM*Species + AVG_turns_hour, data = d)
-  
-  em <- emtrends(fit, ~Species, var = "PFAS_SUM") |> summary(infer = FALSE)
-  
-  if("Eider" %in% em$Species) {
-    return(em$PFAS_SUM.trend[em$Species == "Eider"])
-  } else {
-    return(NA)
-  }
+  fit <- lm(
+    AVG_Temp_egg_Hour ~ PFOS * Species + AVG_turns_hour,
+    data = d
+  )
+  coef(fit)["PFOS"]   # Eider slope
 }
 
 set.seed(123)
-boot_eider <- boot(combined_data, statistic = boot_fun_eider, R = 5000)
-boot_eider
-#Bootstap distribution and CI:
-boot_vals <- boot_eider$t[,1]
-orig_val  <- boot_eider$t0
-ci_eider <- boot.ci(boot_eider, type = "perc")$percent[4:5]
-ci_eider
+boot_eider <- boot(
+  data = combined_data,
+  statistic = boot_fun_eider,
+  R = 5000
+)
+
+# Bootstrap CI
+boot.ci(boot_eider, type = "perc")
+boot.ci(boot_eider, type = "bca")
+
 
 #PLOT 4)
 plot_data <- data.frame(slope = boot_vals)
 
 ggplot(plot_data, aes(x = slope)) +
   geom_histogram(binwidth = 0.05, fill = "white", color = "black", alpha = 0.7) +
-  geom_vline(xintercept = orig_val, color = "red", size = 1.2) +
-  geom_vline(xintercept = ci_eider, color = "green", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = orig_val, color = "red", linewidth = 1.2) +
+  geom_vline(xintercept = ci_eider, color = "green", linetype = "dashed", linewidth = 1) +
   labs(
-    title = "",
-    x = "Bootstrap slope estimates",
+    x = expression("Bootstrap PFOS slope (°C " * h^{-1} * ")"),
     y = "Frequency"
   ) +
   theme(
@@ -1880,55 +2108,6 @@ ggplot(plot_data, aes(x = slope)) +
     axis.line = element_line(color = "black"),
     plot.background = element_rect(fill = "transparent", colour = NA)
   )
-
-
-#
-#5) 
-LM_TempPFOS <- lm(AVG_Temp_egg_Hour~ PFOS*Species+AVG_turns_hour, data=combined_data)
-summary(LM_TempPFOS)
-
-
-boot_fun_eider <- function(data, indices) {
-  d <- data[indices, ]
-  fit <- lm(AVG_Temp_egg_Hour ~ PFOS*Species+AVG_turns_hour, data = d)
-  
-  em <- emtrends(fit, ~Species, var = "PFOS") |> summary(infer = FALSE)
-  
-  if("Eider" %in% em$Species) {
-    return(em$PFOS.trend[em$Species == "Eider"])
-  } else {
-    return(NA)
-  }
-}
-
-set.seed(123)
-boot_eider <- boot(combined_data, statistic = boot_fun_eider, R = 5000)
-boot_eider
-#Bootstap distribution and CI:
-boot_vals <- boot_eider$t[,1]
-orig_val  <- boot_eider$t0
-ci_eider <- boot.ci(boot_eider, type = "perc")$percent[4:5]
-ci_eider
-
-#PLOT 5)
-plot_data <- data.frame(slope = boot_vals)
-
-ggplot(plot_data, aes(x = slope)) +
-  geom_histogram(binwidth = 0.05, fill = "white", color = "black", alpha = 0.7) +
-  geom_vline(xintercept = orig_val, color = "red", size = 1.2) +
-  geom_vline(xintercept = ci_eider, color = "green", linetype = "dashed", size = 1) +
-  labs(
-    title = "",
-    x = "Bootstrap slope estimates",
-    y = "Frequency"
-  ) +
-  theme(
-    panel.background = element_rect(fill = "transparent", colour = NA),
-    axis.line = element_line(color = "black"),
-    plot.background = element_rect(fill = "transparent", colour = NA)
-  )
-
-
 
 
 
